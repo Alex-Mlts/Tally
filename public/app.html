@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tally</title>
+<meta name="description" content="Tally: a self-hosted IT equipment loan register with inventory, reservations, calendar and printable loan slips.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Tally">
+<meta property="og:title" content="Tally: equipment loan register">
+<meta property="og:description" content="Track who borrowed what: loans, inventory, reservations, calendar and printable loan slips.">
+<meta property="og:url" content="__ORIGIN__/">
+<meta property="og:image" content="__ORIGIN__/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Tally logo">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Tally: equipment loan register">
+<meta name="twitter:description" content="Track who borrowed what: loans, inventory, reservations, calendar and printable loan slips.">
+<meta name="twitter:image" content="__ORIGIN__/og-image.png">
+<script>
+(function(){try{var t=localStorage.getItem("tally.theme"),r=document.documentElement,d=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches;
+if(t&&t!=="auto"){r.setAttribute("data-theme",t)}
+var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-tone",(t&&t!=="auto"?dk[t]:d)?"dark":"light")}catch(e){}})();
+</script>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#05102a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="themes.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <img class="brand-wordmark wm-dark" src="tally-wordmark-dark-sm.png" alt="Tally" height="44">
+      <img class="brand-wordmark wm-light" src="tally-wordmark-light-sm.png" alt="" height="44" aria-hidden="true">
+      <h1 class="sr-only">Tally</h1>
+      <div class="eyebrow" id="eyebrow"></div>
+      <div class="tagline" data-i18n="appTitle">Registre des prêts de matériel</div>
+    </div>
+    <div class="topright">
+      
+      <div class="bellwrap">
+        <button type="button" class="iconbtn" id="bellBtn" aria-haspopup="true" aria-expanded="false" data-i18n-title="notifTitle">
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 20.5a2 2 0 0 0 4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span class="badge" id="bellBadge" hidden>0</span>
+        </button>
+        <div class="notif" id="notifPanel" hidden role="dialog" aria-labelledby="notifHead">
+          <div class="notif-head" id="notifHead" data-i18n="notifTitle">Notifications</div>
+          <div id="notifList"></div>
+        </div>
+      </div>
+      <a href="#settings" class="iconbtn" id="gearBtn" data-i18n-title="navSettings">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Navigation">
+    <a href="#registre" data-view="registre" data-i18n="navRegister">Registre</a>
+    <a href="#inventaire" data-view="inventaire" data-i18n="navInventory">Inventaire</a>
+    <a href="#calendrier" data-view="calendrier" data-i18n="navCalendar">Calendrier</a>
+    <a href="#stats" data-view="stats" data-i18n="navStats">Statistiques</a>
+  </nav>
+
+  <div class="banner" id="offline" hidden></div>
+  <div class="banner updated" id="updateBanner" hidden role="status">
+    <span id="updateText"></span>
+    <span class="bactions"><button type="button" class="link" id="updateOpen" data-i18n="whatsNew"></button><button type="button" class="link" id="updateDismiss" data-i18n="dismiss"></button></span>
+  </div>
+
+  <!-- ================= REGISTER ================= -->
+  <main id="view-registre" class="view">
+    <section class="stats three" aria-label="Résumé">
+      <div class="stat"><b id="sOut">0</b><span data-i18n="kOut">En cours</span></div>
+      <div class="stat late"><b id="sLate">0</b><span data-i18n="kLate">En retard</span></div>
+      <div class="stat"><b id="sBack">0</b><span data-i18n="kBackMonth">Rendus ce mois</span></div>
+    </section>
+
+    <div class="toolbar">
+      <input class="search" id="q" type="search" data-i18n-ph="searchPh">
+      <div class="chips" role="group">
+        <button class="chip" type="button" data-f="active" aria-pressed="true" data-i18n="fActive">En cours</button>
+        <button class="chip" type="button" data-f="late" aria-pressed="false" data-i18n="fLate">En retard</button>
+        <button class="chip" type="button" data-f="back" aria-pressed="false" data-i18n="fBack">Rendus</button>
+        <button class="chip" type="button" data-f="all" aria-pressed="false" data-i18n="fAll">Tous</button>
+      </div>
+      <div class="actions">
+        <button class="btn" id="exportBtn" type="button" data-i18n="exportCsv">Exporter CSV</button>
+        <button class="btn primary" id="newBtn" type="button" data-i18n="newLoan">+ Nouveau prêt</button>
+      </div>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr>
+          <th data-i18n="thSlip">Bordereau</th><th data-i18n="thItem">Matériel</th><th data-i18n="thBorrower">Emprunteur</th><th data-i18n="thSite">Site</th><th data-i18n="thLoaned">Prêté le</th><th data-i18n="thDue">Retour prévu</th><th data-i18n="thStatus">Statut</th><th></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty">
+        <h3 id="emptyTitle"></h3>
+        <p id="emptyText"></p>
+        <button class="btn primary" id="emptyNew" type="button" hidden data-i18n="firstLoan">Enregistrer le premier prêt</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ================= INVENTORY ================= -->
+  <main id="view-inventaire" class="view" hidden>
+    <section class="stats three" aria-label="Inventaire">
+      <div class="stat"><b id="iTotal">0</b><span data-i18n="iTotal">Équipements</span></div>
+      <div class="stat"><b id="iAvail">0</b><span data-i18n="iAvail">Disponibles</span></div>
+      <div class="stat"><b id="iLoaned">0</b><span data-i18n="iLoaned">Prêtés</span></div>
+    </section>
+    <div class="toolbar">
+      <input class="search" id="iq" type="search" data-i18n-ph="invSearchPh">
+      <div class="chips" role="group" id="invChips">
+        <button class="chip" type="button" data-s="all" aria-pressed="true" data-i18n="fAll">Tous</button>
+        <button class="chip" type="button" data-s="available" aria-pressed="false" data-i18n="iAvail">Disponibles</button>
+        <button class="chip" type="button" data-s="loaned" aria-pressed="false" data-i18n="iLoaned">Prêtés</button>
+      </div>
+      <select id="iCat" class="filter"></select>
+      <div class="actions">
+        <button class="btn primary" id="newEqBtn" type="button" data-i18n="newEquipment">+ Ajouter un équipement</button>
+      </div>
+    </div>
+    <div class="tablebox">
+      <table class="inv">
+        <thead><tr>
+          <th data-i18n="thState">État</th><th data-i18n="thEquipment">Équipement</th><th data-i18n="thSerialTag">N° de série · inventaire</th><th data-i18n="thSite">Site</th><th data-i18n="thWhere">Actuellement</th><th></th>
+        </tr></thead>
+        <tbody id="invRows"></tbody>
+      </table>
+      <div class="empty" id="invEmpty" hidden>
+        <h3 id="invEmptyTitle"></h3>
+        <p id="invEmptyText"></p>
+      </div>
+    </div>
+    <p class="sub" data-i18n="dotHelp">Cliquez sur le point pour basculer entre disponible (vert) et prêté (rouge). Les prêts enregistrés mettent l'état à jour automatiquement.</p>
+  </main>
+
+  <!-- ================= CALENDAR ================= -->
+  <main id="view-calendrier" class="view" hidden>
+    <div class="toolbar">
+      <div class="calnav">
+        <button class="iconbtn" type="button" id="calPrev" aria-label="‹">‹</button>
+        <h2 id="calTitle"></h2>
+        <button class="iconbtn" type="button" id="calNext" aria-label="›">›</button>
+        <button class="btn small" type="button" id="calToday" data-i18n="calToday">Aujourd'hui</button>
+      </div>
+      <div class="chips" role="group" id="calLayers">
+        <button class="chip lg-loan" type="button" data-layer="loans" aria-pressed="true"><i></i><span data-i18n="calLoans">Prêts</span></button>
+        <button class="chip lg-res" type="button" data-layer="res" aria-pressed="true"><i></i><span data-i18n="calRes">Réservations</span></button>
+      </div>
+      <div class="actions">
+        <button class="btn primary" type="button" id="newResBtn" data-i18n="newRes">+ Nouvelle réservation</button>
+      </div>
+    </div>
+    <div class="calbox"><div class="cal" id="cal"></div></div>
+    <p class="sub legend"><span class="sw loan"></span><span data-i18n="lgLoan">Prêt en cours</span> <span class="sw late"></span><span data-i18n="lgLate">En retard</span> <span class="sw done"></span><span data-i18n="lgDone">Rendu</span> <span class="sw res"></span><span data-i18n="lgRes">Réservation</span> · <span data-i18n="calHelp">Cliquez sur un jour pour réserver à cette date.</span></p>
+
+    <section class="card">
+      <div class="card-head">
+        <h2 data-i18n="resListTitle">Réservations</h2>
+        <div class="chips" role="group" id="resChips">
+          <button class="chip" type="button" data-r="upcoming" aria-pressed="true" data-i18n="resUpcoming">À venir et en cours</button>
+          <button class="chip" type="button" data-r="all" aria-pressed="false" data-i18n="fAll">Toutes</button>
+        </div>
+      </div>
+      <div class="tablebox flat">
+        <table class="restable">
+          <thead><tr><th data-i18n="thRes">Réservation</th><th data-i18n="thItem">Matériel</th><th data-i18n="thBorrower">Emprunteur</th><th data-i18n="thPeriod">Période</th><th data-i18n="thStatus">Statut</th><th></th></tr></thead>
+          <tbody id="resRows"></tbody>
+        </table>
+        <div class="empty" id="resEmpty" hidden><p id="resEmptyText"></p></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ================= STATISTICS ================= -->
+  <main id="view-stats" class="view" hidden>
+    <div class="toolbar">
+      <label class="inline"><span data-i18n="period">Période</span>
+        <select id="st_period">
+          <option value="12" data-i18n="p12">12 derniers mois</option>
+          <option value="year" data-i18n="pYear">Cette année</option>
+          <option value="prevyear" data-i18n="pPrevYear">Année précédente</option>
+          <option value="all" data-i18n="pAll">Tout l'historique</option>
+        </select>
+      </label>
+      <label class="inline"><span data-i18n="siteFilter">Site</span><select id="st_site"></select></label>
+    </div>
+    <section class="stats">
+      <div class="stat"><b id="kTotal">0</b><span data-i18n="kTotal">Objets prêtés</span></div>
+      <div class="stat"><b id="kAvg">—</b><span data-i18n="kAvg">Durée moyenne (jours)</span></div>
+      <div class="stat"><b id="kOnTime">—</b><span data-i18n="kOnTime">Rendus à temps</span></div>
+      <div class="stat"><b id="kBorrowers">0</b><span data-i18n="kBorrowers">Emprunteurs différents</span></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2 data-i18n="chMonth">Objets prêtés par mois</h2><span class="sub" data-i18n="monthNote"></span></div>
+      <div class="chart" id="monthChart"></div>
+    </section>
+    <div class="cols">
+      <section class="card">
+        <div class="card-head">
+          <h2 data-i18n="chItem">Par matériel</h2>
+          <div class="seg small" role="group" id="itemMode">
+            <button type="button" data-m="item" aria-pressed="true" data-i18n="byItem">Article</button>
+            <button type="button" data-m="category" aria-pressed="false" data-i18n="byCategory">Catégorie</button>
+          </div>
+        </div>
+        <div class="hbars" id="itemChart"></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2 data-i18n="chUser">Par emprunteur</h2>
+          <div class="seg small" role="group" id="userMode">
+            <button type="button" data-m="borrower" aria-pressed="true" data-i18n="byPerson">Personne</button>
+            <button type="button" data-m="department" aria-pressed="false" data-i18n="byDept">Service</button>
+          </div>
+        </div>
+        <div class="hbars" id="userChart"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ================= SETTINGS ================= -->
+  <main id="view-settings" class="view" hidden>
+    <form id="settingsForm" class="settings" novalidate>
+      <section class="card">
+        <h2 data-i18n="sGeneral">Général</h2>
+        <div class="grid2">
+          <label><span data-i18n="sOrg">Organisation</span><input id="s_orgName"></label>
+          <label><span data-i18n="sService">Nom du service</span><input id="s_serviceName"></label>
+        </div>
+        <div class="grid2">
+          <label><span data-i18n="sDefaultLang">Langue par défaut</span>
+            <select id="s_defaultLang"><option value="fr">Français</option><option value="en">English</option></select>
+          </label>
+          <label><span data-i18n="sDateFormat">Format de date</span>
+            <select id="s_dateFormat"></select>
+          </label>
+        </div>
+        <div class="field">
+          <div class="lblrow">
+            <label for="s_publicUrl" data-i18n="sPublicUrl">Adresse du registre pour les QR codes</label>
+            <span class="infowrap">
+              <button type="button" class="infobtn" id="urlInfoBtn" aria-expanded="false" aria-controls="urlInfoPop" data-i18n-title="infoLabel" title="Info">i</button>
+              <span class="infopop" id="urlInfoPop" role="tooltip" hidden data-i18n="sPublicUrlHelp"></span>
+            </span>
+          </div>
+          <input id="s_publicUrl" class="mono" placeholder="http://192.168.1.20:3000">
+        </div>
+        <div class="logobox">
+          <div class="logoprev" id="logoPrev"><span data-i18n="logoNone">Aucun logo</span></div>
+          <div class="logoinfo">
+            <span class="lbl" data-i18n="sLogo">Logo du bordereau</span>
+            <small data-i18n="sLogoHelp"></small>
+            <div class="actions">
+              <label class="btn" for="logoFile"><span data-i18n="logoChoose">Choisir une image…</span></label>
+              <input id="logoFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" hidden>
+              <button class="btn danger" type="button" id="logoRemove" data-i18n="logoRemove" hidden>Retirer le logo</button>
+            </div>
+          </div>
+        </div>
+        <div class="themebox" role="radiogroup" aria-labelledby="themeLbl">
+          <span class="lbl" id="themeLbl" data-i18n="sTheme">Thème</span>
+          <small data-i18n="sThemeHelp"></small>
+          <div class="themegrid">
+            <label class="theme"><input type="radio" name="s_theme" value="auto"><span class="tname" data-i18n="theme_auto"></span><span class="sw"><i style="background:#f3f5f4"></i><i style="background:#ffffff"></i><i style="background:#121715"></i><i style="background:#1a201e"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="light"><span class="tname" data-i18n="theme_light"></span><span class="sw"><i style="background:#f3f5f4"></i><i style="background:#ffffff"></i><i style="background:#1f4fbf"></i><i style="background:#18201d"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="dark"><span class="tname" data-i18n="theme_dark"></span><span class="sw"><i style="background:#121715"></i><i style="background:#1a201e"></i><i style="background:#7ea2ff"></i><i style="background:#e7ece9"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="indigo"><span class="tname" data-i18n="theme_indigo"></span><span class="sw"><i style="background:#6e6be5"></i><i style="background:#ec6e67"></i><i style="background:#141720"></i><i style="background:#07080c"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="ocean"><span class="tname" data-i18n="theme_ocean"></span><span class="sw"><i style="background:#05102a"></i><i style="background:#0b1f45"></i><i style="background:#00a6ff"></i><i style="background:#2b6cff"></i><i style="background:#e7f0ff"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="forest"><span class="tname" data-i18n="theme_forest"></span><span class="sw"><i style="background:#f1eee1"></i><i style="background:#fffdf7"></i><i style="background:#1f5a3d"></i><i style="background:#7aa874"></i><i style="background:#b5532f"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="sunset"><span class="tname" data-i18n="theme_sunset"></span><span class="sw"><i style="background:#fff3e8"></i><i style="background:#fffdfa"></i><i style="background:#c2410c"></i><i style="background:#f59f00"></i><i style="background:#3b1f12"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="mocha"><span class="tname" data-i18n="theme_mocha"></span><span class="sw"><i style="background:#14100d"></i><i style="background:#201a15"></i><i style="background:#8a5a3b"></i><i style="background:#d9a066"></i><i style="background:#f1e6da"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="nord"><span class="tname" data-i18n="theme_nord"></span><span class="sw"><i style="background:#2e3440"></i><i style="background:#3b4252"></i><i style="background:#88c0d0"></i><i style="background:#81a1c1"></i><i style="background:#eceff4"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="graphite"><span class="tname" data-i18n="theme_graphite"></span><span class="sw"><i style="background:#0f0f10"></i><i style="background:#1a1a1c"></i><i style="background:#a3e635"></i><i style="background:#6b7280"></i><i style="background:#f2f2f3"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="rose"><span class="tname" data-i18n="theme_rose"></span><span class="sw"><i style="background:#fdf2f5"></i><i style="background:#fffafb"></i><i style="background:#be185d"></i><i style="background:#f472b6"></i><i style="background:#3b1424"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+            <label class="theme"><input type="radio" name="s_theme" value="mint"><span class="tname" data-i18n="theme_mint"></span><span class="sw"><i style="background:#ecf8f3"></i><i style="background:#fbfffd"></i><i style="background:#0f766e"></i><i style="background:#5eead4"></i><i style="background:#12332c"></i></span><span class="tcheck" aria-hidden="true">✓</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sLoans">Prêts</h2>
+        <div class="grid3">
+          <label><span data-i18n="sDefaultDays">Durée par défaut (jours)</span><input id="s_defaultLoanDays" type="number" min="1" max="365"></label>
+          <label><span data-i18n="sSoonDays">Alerte « retour bientôt »</span><input id="s_dueSoonDays" type="number" min="0" max="60"></label>
+          <label><span data-i18n="sPrefix">Préfixe des bordereaux</span><input id="s_slipPrefix" class="mono" maxlength="8"></label>
+        </div>
+        <div class="grid3">
+          <label><span data-i18n="sRefresh">Actualisation (secondes)</span><input id="s_refreshSeconds" type="number" min="10" max="600"></label>
+        </div>
+        <small data-i18n="sPrefixHelp"></small>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="issuerLbl" data-i18n="sRequireIssuer">Rendre « Remis par » obligatoire</span><small data-i18n="sRequireIssuerHelp"></small></div>
+          <label class="switch"><input id="s_requireIssuedBy" type="checkbox" role="switch" aria-labelledby="issuerLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sLists">Listes de choix</h2>
+        <p class="sub" data-i18n="sListsHelp"></p>
+        <div class="grid3">
+          <div class="picklist" data-list="sites">
+            <h3 data-i18n="sSites">Sites</h3>
+            <div class="addrow"><input data-i18n-ph="addSitePh"><button class="btn" type="button" data-i18n="add">Ajouter</button></div>
+            <ul class="chiplist"></ul>
+          </div>
+          <div class="picklist" data-list="departments">
+            <h3 data-i18n="sDepts">Services</h3>
+            <div class="addrow"><input data-i18n-ph="addDeptPh"><button class="btn" type="button" data-i18n="add">Ajouter</button></div>
+            <ul class="chiplist"></ul>
+          </div>
+          <div class="picklist" data-list="categories">
+            <h3 data-i18n="sCats">Catégories</h3>
+            <div class="addrow"><input data-i18n-ph="addCatPh"><button class="btn" type="button" data-i18n="add">Ajouter</button></div>
+            <ul class="chiplist"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sSlip">Bordereau</h2>
+        <label><span data-i18n="sTerms">Texte</span><textarea id="s_terms" rows="6"></textarea><small data-i18n="sTermsHelp"></small></label>
+      </section>
+
+      <div class="savebar">
+        <span class="sub" id="settingsMsg"></span>
+        <button class="btn primary" type="submit" id="saveSettings" data-i18n="sSave">Enregistrer les paramètres</button>
+      </div>
+
+      <section class="card collapsible" id="intCard">
+        <div class="card-head">
+          <h2 data-i18n="sIntegrations">Integrations</h2>
+          <button class="iconbtn" type="button" id="intToggle" aria-expanded="true" aria-controls="intBody" data-i18n-title="intHide" title="Hide"><svg class="eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.5 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
+        </div>
+        <div id="intBody">
+          <p class="sub" data-i18n="sIntegrationsHelp"></p>
+          <ul class="intlist">
+          <li class="introw" aria-disabled="true">
+            <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <div class="inttxt"><strong data-i18n="intInventory">Inventory</strong><span class="sub" data-i18n="intInventoryHelp"></span></div>
+            <span class="soon" data-i18n="comingSoon">Coming soon</span>
+          </li>
+          <li class="introw" aria-disabled="true">
+            <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <div class="inttxt"><strong data-i18n="intHardware">Hardware & Ops</strong><span class="sub" data-i18n="intHardwareHelp"></span></div>
+            <span class="soon" data-i18n="comingSoon">Coming soon</span>
+          </li>
+          <li class="introw" aria-disabled="true">
+            <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <div class="inttxt"><strong data-i18n="intPeople">People</strong><span class="sub" data-i18n="intPeopleHelp"></span></div>
+            <span class="soon" data-i18n="comingSoon">Coming soon</span>
+          </li>
+          <li class="introw" aria-disabled="true">
+            <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <div class="inttxt"><strong data-i18n="intCalendar">Calendar</strong><span class="sub" data-i18n="intCalendarHelp"></span></div>
+            <span class="soon" data-i18n="comingSoon">Coming soon</span>
+          </li>
+          <li class="introw" aria-disabled="true">
+            <svg class="lock" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            <div class="inttxt"><strong data-i18n="intNotifications">Notifications</strong><span class="sub" data-i18n="intNotificationsHelp"></span></div>
+            <span class="soon" data-i18n="comingSoon">Coming soon</span>
+          </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 data-i18n="sData">Données</h2>
+        <p class="sub" data-i18n="sDataHelp"></p>
+        <div class="actions">
+          <button class="btn" type="button" id="exportBtn2" data-i18n="exportCsv">Exporter CSV</button>
+          <button class="btn" type="button" id="importBtn" data-i18n="importCsv">Import CSV</button>
+          <a class="btn" href="/api/backup" data-i18n="sBackup">Télécharger une sauvegarde (.db)</a>
+          <input type="file" id="importFile" accept=".csv,text/csv,text/plain" hidden>
+        </div>
+        <div class="importbox" id="importBox" hidden>
+          <div class="importhead"><strong id="importName"></strong><button class="btn small" type="button" id="importCancel" data-i18n="cancel">Cancel</button></div>
+          <p class="sub" id="importSummary"></p>
+          <div class="importscroll"><table class="importtbl"><thead id="importHead"></thead><tbody id="importBody"></tbody></table></div>
+          <div class="actions"><button class="btn primary" type="button" id="importGo" data-i18n="importGo">Import</button><button type="button" class="link" id="importTpl" data-i18n="importTpl">Download a template</button></div>
+        </div>
+        <p class="sub" data-i18n="importHelp"></p>
+      </section>
+
+      <footer class="about">
+        <a class="gh" id="ghLink" href="https://github.com/Alex-Mlts/tally" target="_blank" rel="noopener noreferrer" data-i18n-title="viewSource" title="View source">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span data-i18n="viewSource">View source</span>
+        </a>
+        <span class="ver"><img src="tally-icon.png" alt="" width="40" height="40"><span id="aboutVer">Tally</span><span class="dot" aria-hidden="true">·</span><button type="button" class="link" id="whatsNewBtn" data-i18n="whatsNew">Nouveautés</button></span>
+      </footer>
+    </form>
+  </main>
+</div>
+
+<!-- ======== loan form ======== -->
+<div class="scrim" id="sheet" hidden>
+  <aside class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet-head"><h2 id="sheetTitle"></h2><button class="btn small" type="button" id="closeSheet" data-i18n="close">Fermer</button></div>
+    <form id="form" novalidate>
+      <p class="info" id="fromRes" hidden></p>
+      <fieldset>
+        <legend data-i18n="lgItems">Matériel prêté</legend>
+        <div class="pickrow">
+          <input id="invPick" list="invList" data-i18n-ph="invPickPh" autocomplete="off">
+          <button class="btn" type="button" id="addManual" data-i18n="addManual">+ Hors inventaire</button>
+        </div>
+        <datalist id="invList"></datalist>
+        <div id="itemRows" class="itemrows"></div>
+      </fieldset>
+      <fieldset>
+        <legend data-i18n="lgBorrower">Emprunteur</legend>
+        <div class="grid2">
+          <label><span data-i18n="fBorrower">Nom et prénom</span><input id="f_borrower" list="borrowers" required></label>
+          <label><span data-i18n="fDept">Service</span><select id="f_dept" required></select></label>
+        </div>
+        <div class="grid2">
+          <label><span data-i18n="fSite">Site</span><select id="f_site"></select></label>
+          <label><span><span data-i18n="fContact">Contact</span> <span class="opt" data-i18n="fContactOpt"></span></span><input id="f_contact"></label>
+        </div>
+        <div class="grid2">
+          <label><span><span data-i18n="fPurpose">Motif du prêt</span> <span class="opt" data-i18n="optional"></span></span><input id="f_purpose" data-i18n-ph="fPurposePh"></label>
+          <label><span><span data-i18n="fIssuedBy">Remis par</span> <span class="opt" id="issuedOpt" data-i18n="fIssuedByOpt"></span></span><input id="f_issuedBy" data-i18n-ph="fIssuedByPh"></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend data-i18n="lgDates">Dates</legend>
+        <div class="grid2">
+          <label><span data-i18n="fLoanDate">Date de prêt</span><input id="f_loanDate" type="date" required></label>
+          <label><span data-i18n="fDueDate">Retour prévu</span><input id="f_dueDate" type="date" required></label>
+        </div>
+        <label><span><span data-i18n="fNotes">Remarques</span> <span class="opt" data-i18n="optional"></span></span><textarea id="f_notes"></textarea></label>
+      </fieldset>
+      <p class="err" id="formErr" hidden></p>
+      <div class="formfoot">
+        <button class="btn danger" type="button" id="delBtn" data-i18n="delete">Supprimer</button>
+        <button class="btn" type="button" id="cancelForm" data-i18n="cancel">Annuler</button>
+        <button class="btn primary" type="submit" id="saveBtn"></button>
+      </div>
+    </form>
+  </aside>
+</div>
+
+<!-- ======== return form ======== -->
+<div class="scrim" id="retSheet" hidden>
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="retTitle">
+    <div class="sheet-head"><h2 id="retTitle" data-i18n="retTitle">Enregistrer le retour</h2><button class="btn small" type="button" id="closeRet" data-i18n="close">Fermer</button></div>
+    <form id="retForm" novalidate>
+      <p class="sub" id="retWhat"></p>
+      <label class="narrow"><span data-i18n="rDate">Date de retour</span><input id="r_date" type="date" required></label>
+      <div class="retlist" id="retItems"></div>
+      <p class="err" id="retErr" hidden></p>
+      <div class="formfoot">
+        <button class="btn" type="button" id="cancelRet" data-i18n="cancel">Annuler</button>
+        <button class="btn primary" type="submit" data-i18n="rSubmit">Valider le retour</button>
+      </div>
+    </form>
+  </aside>
+</div>
+
+<!-- ======== extend form ======== -->
+<div class="scrim" id="extSheet" hidden>
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="extTitle">
+    <div class="sheet-head"><h2 id="extTitle" data-i18n="extTitle">Prolonger le prêt</h2><button class="btn small" type="button" id="closeExt" data-i18n="close">Fermer</button></div>
+    <form id="extForm" novalidate>
+      <p class="sub" id="extWhat"></p>
+      <div class="grid2">
+        <label><span data-i18n="extCurrent">Retour prévu actuel</span><input id="x_current" type="date" disabled></label>
+        <label><span data-i18n="extNew">Nouvelle date de retour</span><input id="x_due" type="date" required></label>
+      </div>
+      <div class="quick" id="extQuick">
+        <button class="chip" type="button" data-d="7">+7 j</button>
+        <button class="chip" type="button" data-d="14">+14 j</button>
+        <button class="chip" type="button" data-d="30">+30 j</button>
+      </div>
+      <label><span><span data-i18n="extReason">Motif</span> <span class="opt" data-i18n="optional"></span></span><input id="x_reason" data-i18n-ph="extReasonPh"></label>
+      <div class="exthist" id="extHist"></div>
+      <p class="err" id="extErr" hidden></p>
+      <div class="formfoot">
+        <button class="btn" type="button" id="cancelExt" data-i18n="cancel">Annuler</button>
+        <button class="btn primary" type="submit" data-i18n="extSubmit">Prolonger</button>
+      </div>
+    </form>
+  </aside>
+</div>
+
+<!-- ======== equipment form ======== -->
+<div class="scrim" id="eqSheet" hidden>
+  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="eqTitle">
+    <div class="sheet-head"><h2 id="eqTitle"></h2><button class="btn small" type="button" id="closeEq" data-i18n="close">Fermer</button></div>
+    <form id="eqForm" novalidate>
+      <label><span data-i18n="fItem">Désignation</span><input id="e_name" required data-i18n-ph="fItemPh"></label>
+      <div class="grid2">
+        <label><span data-i18n="fCat">Catégorie</span><select id="e_category"></select></label>
+        <label><span data-i18n="fSite">Site</span><select id="e_site"></select></label>
+      </div>
+      <div class="grid2">
+        <label><span data-i18n="fSerial">N° de série</span><input id="e_serial" class="mono" required></label>
+        <label><span><span data-i18n="fTag">N° d'inventaire</span> <span class="opt" data-i18n="optional"></span></span><input id="e_assetTag" class="mono"></label>
+      </div>
+      <label><span><span data-i18n="fNotes">Remarques</span> <span class="opt" data-i18n="optional"></span></span><textarea id="e_notes"></textarea></label>
+      <p class="err" id="eqErr" hidden></p>
+      <div class="formfoot">
+        <button class="btn danger" type="button" id="eqDel" data-i18n="delete">Supprimer</button>
+        <button class="btn" type="button" id="cancelEq" data-i18n="cancel">Annuler</button>
+        <button class="btn primary" type="submit" id="eqSave"></button>
+      </div>
+    </form>
+  </aside>
+</div>
+
+<!-- ======== reservation form ======== -->
+<div class="scrim" id="resSheet" hidden>
+  <aside class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+    <div class="sheet-head"><h2 id="resTitle"></h2><button class="btn small" type="button" id="closeRes" data-i18n="close">Fermer</button></div>
+    <form id="resForm" novalidate>
+      <fieldset>
+        <legend data-i18n="lgResItems">Matériel réservé</legend>
+        <input id="resPick" list="resList" data-i18n-ph="resPickPh" autocomplete="off">
+        <datalist id="resList"></datalist>
+        <ul class="chiplist big" id="resItems"></ul>
+      </fieldset>
+      <fieldset>
+        <legend data-i18n="lgDates">Dates</legend>
+        <div class="grid2">
+          <label><span data-i18n="resStart">Du</span><input id="v_startDate" type="date" required></label>
+          <label><span data-i18n="resEnd">Au</span><input id="v_endDate" type="date" required></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend data-i18n="lgBorrower">Emprunteur</legend>
+        <div class="grid2">
+          <label><span data-i18n="fBorrower">Nom et prénom</span><input id="v_borrower" list="borrowers" required></label>
+          <label><span data-i18n="fDept">Service</span><select id="v_department"></select></label>
+        </div>
+        <div class="grid2">
+          <label><span data-i18n="fSite">Site</span><select id="v_site"></select></label>
+          <label><span><span data-i18n="fContact">Contact</span> <span class="opt" data-i18n="fContactOpt"></span></span><input id="v_contact"></label>
+        </div>
+        <div class="grid2">
+          <label><span><span data-i18n="fPurpose">Motif</span> <span class="opt" data-i18n="optional"></span></span><input id="v_purpose" data-i18n-ph="fPurposePh"></label>
+          <label><span><span data-i18n="resBookedBy">Réservé par</span> <span class="opt" data-i18n="optional"></span></span><input id="v_bookedBy" data-i18n-ph="fIssuedByPh"></label>
+        </div>
+        <label><span><span data-i18n="fNotes">Remarques</span> <span class="opt" data-i18n="optional"></span></span><textarea id="v_notes"></textarea></label>
+      </fieldset>
+      <p class="err" id="resErr" hidden></p>
+      <div class="formfoot">
+        <button class="btn" type="button" id="cancelRes" data-i18n="cancel">Annuler</button>
+        <button class="btn primary" type="submit" id="resSave"></button>
+      </div>
+    </form>
+  </aside>
+</div>
+
+<!-- ======== history ======== -->
+<div class="scrim" id="histSheet" hidden>
+  <aside class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="histTitle">
+    <div class="sheet-head"><div><div class="eyebrow" id="histKind"></div><h2 id="histTitle"></h2></div><button class="btn small" type="button" id="closeHist" data-i18n="close">Fermer</button></div>
+    <div class="histbody">
+      <div class="histsum" id="histSum"></div>
+      <div id="histList"></div>
+    </div>
+  </aside>
+</div>
+
+<!-- ======== slip ======== -->
+<div class="modal" id="slipModal" hidden>
+  <div class="modal-inner">
+    <div class="modal-bar">
+      <p data-i18n="slipHint"></p>
+      <div class="actions">
+        
+        <button class="btn primary" type="button" id="printSlip" data-i18n="print">Imprimer</button>
+        <button class="btn" type="button" id="dlSlip" data-i18n="downloadHtml">Télécharger (.html)</button>
+        <button class="btn" type="button" id="closeSlip" data-i18n="close">Fermer</button>
+      </div>
+    </div>
+    <div class="paper"><iframe id="slipFrame" title="Bordereau"></iframe></div>
+  </div>
+</div>
+
+<div class="modal" id="clModal" hidden>
+  <div class="modal-inner narrow">
+    <div class="modal-bar">
+      <h2 id="clTitle" data-i18n="whatsNew">Nouveautés</h2>
+      <div class="actions"><button class="btn" type="button" id="closeCl" data-i18n="close">Fermer</button></div>
+    </div>
+    <div class="cl" id="clBody" role="dialog" aria-labelledby="clTitle"></div>
+  </div>
+</div>
+
+<div class="confirm" id="confirm" hidden>
+  <div class="box" role="alertdialog" aria-labelledby="cTitle">
+    <h3 id="cTitle"></h3>
+    <p id="cText"></p>
+    <div class="formfoot">
+      <button class="btn" type="button" id="cNo" data-i18n="cancel">Annuler</button>
+      <button class="btn danger" type="button" id="cYes"></button>
+    </div>
+  </div>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+<datalist id="borrowers"></datalist>
+<div class="toast" id="toast" hidden></div>
+
+<script src="/vendor/qrcode.js"></script>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
