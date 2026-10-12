@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.19.0" src="https://img.shields.io/badge/version-1.19.0-6e6be5">
+  <img alt="Version 1.9.0" src="https://img.shields.io/badge/version-1.9.0-6e6be5">
   <img alt="Node 22.13+" src="https://img.shields.io/badge/node-%E2%89%A522.13-339933">
   <img alt="Database: SQLite" src="https://img.shields.io/badge/database-SQLite-003b57">
   <img alt="Languages: English and French" src="https://img.shields.io/badge/languages-EN%20%7C%20FR-ec6e67">
@@ -46,17 +46,19 @@ Tally records every loan with serial numbers, borrower, department and site. It 
 - [Project layout](#project-layout)
 - [API](#api)
 - [Future additions](#future-additions)
+- [License](#license)
 - [Credits](#credits)
 
 ## Features
 
 ### Loans and inventory
 
-- **Register**: current, due-soon and overdue loans; returns item by item; extensions; loan slips; search and filters
+- **Register**: current, due-soon and overdue loans; returns item by item; extensions; loan slips; search and filters. Each row has one main button (Return, or Slip once returned) and a "⋯" menu for the rest; the three summary cards double as filters
 - **Multi-item loans**: one slip can cover several items, picked from the inventory or typed by hand. The server refuses to lend an item that is already out
 - **Inventory**: your equipment with a status dot (green = available, red = on loan); add, edit and delete items; full history for each item. Delete is refused while an item is on loan or reserved
 - **Reservations**: reserve an item for a period and convert the reservation into a loan with one click. The server refuses overlapping reservations, reservations on equipment that is still out on those dates, and loans or extensions that would run into someone else's reservation
 - **History**: click a serial number or a borrower to see everything they have had or borrowed
+- **Keyboard shortcuts**: `N` new loan / item / reservation, `/` search, `1`–`4` switch tabs, `,` Settings, `?` help, `←` `→` and `T` in the calendar, `Ctrl/⌘ + Enter` save the open form, `Esc` close. A Help button next to the GitHub button in the Settings footer opens the list
 - **Undo**: deleting a loan, an item or a reservation shows an "Undo" button; the item comes back exactly as it was, with the same slip number and history
 
 ### Slips, calendar and statistics
@@ -64,11 +66,13 @@ Tally records every loan with serial numbers, borrower, department and site. It 
 - **Loan slip**: printable A4, numbered `PR-YYYY-NNNN` (numbers are never reused), with a QR code that opens the loan, your logo, an items table, borrower details, an agreement text you write yourself, signature boxes and a return section. It is printed in the app language
 - **Calendar**: monthly view of loans (blue; red when overdue; grey when returned) and reservations (purple). Click a day to create a reservation
 - **Statistics**: loans per month, per item (article or category) and per borrower (person or department), filterable by period and site
+- **Sortable columns**: click a column header in the register or the inventory to sort ascending, click again for descending, once more to go back to the default order
 - **Notifications** (bell): loans due soon, overdue loans and reservations to prepare; the badge counts alerts not yet seen on this browser
 
 ### Look and language
 
-- **Bilingual**: French and English. The language is one global setting (Settings → General) that applies to the whole app, the printed slip and the landing page
+- **Bilingual**: French and English. The language is one global setting (Settings → General) that applies to the whole app, the printed slip, the landing page and the messages returned by the server (error texts)
+- **First-run setup**: on a fresh install a short animated card asks for language, theme, organisation name, slip prefix and default loan length. Existing installs skip it
 - **Date format**: DD/MM/YYYY by default; choose MM/DD/YYYY, YYYY-MM-DD, DD.MM.YYYY or DD-MM-YYYY. It applies everywhere: date fields, slips and CSV export
 - **Themes**: System (follows the device), Light, Dark and nine colour themes: Indigo & coral, Ocean, Forest, Sunset, Mocha, Nord, Graphite, Rosé and Mint. The theme applies to everyone
 - **Landing page** at `/`: animated gradient, an "Open Tally" button, a GitHub "View source" button and an EN / FR switch (it sets the app language, the same setting as in Settings). The register itself lives at `/app`
@@ -132,7 +136,7 @@ docker run -d --name tally -p 3000:3000 \
 
 All data lives in `DATA_DIR/registre.db`.
 
-- **Backup**: use **Download a backup** in Settings → Data (or `GET /api/backup`) for a consistent copy without stopping the server. From the command line: `sqlite3 data/registre.db ".backup 'tally-$(date +%F).db'"`. To restore, stop the server and replace `data/registre.db` with the backup.
+- **Backup**: use **Download a backup** in Settings → Data (or `GET /api/backup`) for a consistent copy without stopping the server. From the command line: `sqlite3 data/registre.db ".backup 'tally-$(date +%F).db'"`. To restore, use **Restore from backup** in Settings → Data (a safety copy `before-restore-<time>.db` is kept in the data folder), or stop the server and replace `data/registre.db`.
 - **CSV export**: one row per item, `;` separator, UTF-8 with BOM. It opens cleanly in Excel and works as a readable backup.
 - **CSV import** (Settings → Data → Import CSV) adds equipment to the inventory. Recognised columns: name, category, serial number, asset tag, site, notes (English or French headers; `;`, `,` or tab separators; files saved by Excel are fine). A preview flags new, already-present and invalid rows before anything is saved, and serial numbers already in the inventory are skipped. A template can be downloaded from the same panel.
 - **Reset**: to start over completely, stop the server and delete `data/registre.db`.
@@ -141,8 +145,8 @@ All data lives in `DATA_DIR/registre.db`.
 
 Stop the server, replace the files, run `npm install`, then `npm start`. Your data in `data/` is never touched by an update.
 
-- **From v1.5.0 onwards**: no extra steps. Your saved settings, pick lists and slip text are kept.
-- **From before v1.5.0** (no inventory yet): on first start, existing loans are converted and every serial number already on loan becomes an inventory item. Back up `data/registre.db` first.
+- **From v1.2.0 onwards**: no extra steps. Your saved settings, pick lists and slip text are kept.
+- **From before v1.2.0** (no inventory yet): on first start, existing loans are converted and every serial number already on loan becomes an inventory item. Back up `data/registre.db` first.
 
 After an update, hard-refresh the browser (Ctrl+F5) so it picks up the new files. If the page shows an "outdated server" banner, the old server process is still running: stop it and start it again. A one-time banner then links to **What's new**, which shows the latest entries of [`CHANGELOG.md`](CHANGELOG.md).
 
@@ -152,13 +156,13 @@ Tally uses `MAJOR.MINOR.PATCH`, counted one step at a time with no skipped numbe
 
 | Change    | Number                                         | Meaning                                |
 |-----------|------------------------------------------------|----------------------------------------|
-| **Patch** | last number +1 (`1.19.0` → `1.19.1`)           | Fixes and minor refinements            |
-| **Minor** | middle number +1, patch to 0 (`1.19.1` → `1.20.0`) | New backward-compatible features   |
-| **Major** | first number +1, the others to 0 (`1.20.0` → `2.0.0`) | Breaking changes                |
+| **Patch** | last number +1 (`1.8.0` → `1.8.1`)           | Fixes and minor refinements            |
+| **Minor** | middle number +1, patch to 0 (`1.8.1` → `1.9.0`) | New backward-compatible features   |
+| **Major** | first number +1, the others to 0 (`1.9.0` → `2.0.0`) | Breaking changes                |
 
 To release:
 
-1. Add a block at the top of `CHANGELOG.md`: `## 1.19.1 — Patch`, then bullets under `### Added`, `### Improved` or `### Fixed`.
+1. Add a block at the top of `CHANGELOG.md`: `## 1.9.1 — Patch`, then bullets under `### Added`, `### Improved` or `### Fixed`.
 2. Bump `version` in `package.json` and `APP_VERSION` in `public/app.js` (the page and the server compare them and warn if they differ). Update the version badge at the top of this file.
 
 ## Project layout
@@ -167,6 +171,9 @@ To release:
 server.js            Express server, SQLite schema, API, changelog reader
 CHANGELOG.md         Release notes, read by the app ("What's new")
 Dockerfile
+LICENSE              MIT license
+SECURITY.md          How to report a vulnerability
+CONTRIBUTING.md      How to contribute
 public/
   landing.html       Landing page (served at /)
   app.html           The register (served at /app)
@@ -209,8 +216,17 @@ To change the landing gradient, edit `tools/gradient/entry.jsx`, then run `npm i
 | PUT    | `/api/settings`                | Update settings                              |
 | GET / PUT / DELETE | `/api/logo`        | Slip logo                                    |
 | GET    | `/api/backup`                  | Download a copy of the database (.db)        |
+| POST   | `/api/restore`                 | Restore from an uploaded backup (.db)        |
+| GET    | `/api/loans/:id/signatures`    | Signatures of a loan (PNG data URLs)         |
+| GET    | `/api/archive`                 | Archived loans (`?count=1` for the count)    |
+| GET    | `/api/archive/export`          | Archive as a .txt file                       |
+| POST   | `/api/archive/delete`          | Delete selected archived loans or empty it   |
 
 Creating a loan takes `borrower`, `department`, `loanDate`, `dueDate` (format `YYYY-MM-DD`) and `items`, a list of `{equipmentId}` or `{item, serial, category, assetTag, accessories, conditionOut, addToInventory}` objects. A return takes `{returnDate, items: [{id, conditionIn, returnNotes}]}`. To convert a reservation, add `reservationId` when creating the loan. Undo tokens are kept in memory, so they are lost when the server restarts.
+
+### Archive, signatures and accessibility
+
+Settings → Archive moves returned loans older than a chosen number of months out of the register; they stay viewable, exportable as .txt, and deletable there. Signatures are optional (Settings switch). The interface supports keyboard use, a skip link and screen readers, and is checked with axe-core on every theme.
 
 ## Future additions
 
@@ -219,7 +235,6 @@ These are planned or under consideration, roughly in order of interest. Nothing 
 ### Planned
 
 - **Email reminders (SMTP)**: automatic emails to borrowers before a loan is due and when it is overdue, plus a heads-up for upcoming reservations, sent through the organisation's own SMTP server. (An early version was built and then removed; it will return as an optional, opt-in feature with SMTP settings in the Settings page.)
-- **Signature on screen**: sign the loan and the return on a touchscreen or with a mouse instead of on paper, with the signature stored with the loan and shown on the printed slip.
 
 ### Integrations
 
@@ -239,6 +254,10 @@ Breaking changes would justify a major release:
 - **Borrowers as real records**: a directory with contact details and clean per-person history
 - **Non-serialised items and kits**: quantities (for example 10 HDMI cables) and bundles (a laptop with its charger and bag as one loan)
 - **A versioned API with tokens** for other tools to connect safely
+
+## License
+
+Tally is released under the [MIT License](LICENSE).
 
 ## Credits
 

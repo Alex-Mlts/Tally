@@ -36,6 +36,8 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="loader" id="loader" role="status" aria-live="polite"><div class="ld-box"><svg class="ld-marks" viewBox="0 0 120 80" aria-hidden="true"><path class="m m1" d="M18 12v56"/><path class="m m2" d="M42 12v56"/><path class="m m3" d="M66 12v56"/><path class="m m4" d="M90 12v56"/><path class="m m5" d="M6 58L104 22"/></svg><div class="ld-word">Tally</div><span class="sr-only" id="ldText">Loading…</span></div></div>
+<a class="skip" id="skipLink" href="#view-registre" data-i18n="skip">Skip to content</a>
 <div class="wrap">
   <header class="top">
     <div class="brand">
@@ -63,11 +65,18 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
     </div>
   </header>
 
-  <nav class="tabs" aria-label="Navigation">
+  <nav class="tabs" id="tabsNav" aria-label="Navigation">
     <a href="#registre" data-view="registre" data-i18n="navRegister">Registre</a>
     <a href="#inventaire" data-view="inventaire" data-i18n="navInventory">Inventaire</a>
     <a href="#calendrier" data-view="calendrier" data-i18n="navCalendar">Calendrier</a>
     <a href="#stats" data-view="stats" data-i18n="navStats">Statistiques</a>
+  </nav>
+
+  <nav class="backbar" id="backBar" aria-label="Settings" hidden>
+    <a href="#registre" class="backbtn" id="backBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg><span data-i18n="back">Back</span>
+    </a>
+    <span class="crumb"><b data-i18n="navSettings">Settings</b><span class="sep" aria-hidden="true">/</span><span class="crumb-sec" id="crumbSec"></span></span>
   </nav>
 
   <div class="banner" id="offline" hidden></div>
@@ -79,9 +88,9 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
   <!-- ================= REGISTER ================= -->
   <main id="view-registre" class="view">
     <section class="stats three" aria-label="Résumé">
-      <div class="stat"><b id="sOut">0</b><span data-i18n="kOut">En cours</span></div>
-      <div class="stat late"><b id="sLate">0</b><span data-i18n="kLate">En retard</span></div>
-      <div class="stat"><b id="sBack">0</b><span data-i18n="kBackMonth">Rendus ce mois</span></div>
+      <button type="button" class="stat" data-f="active" aria-pressed="true"><b id="sOut">0</b><span data-i18n="kOut">En cours</span></button>
+      <button type="button" class="stat late" data-f="late" aria-pressed="false"><b id="sLate">0</b><span data-i18n="kLate">En retard</span></button>
+      <button type="button" class="stat" data-f="back" aria-pressed="false"><b id="sBack">0</b><span data-i18n="kBackMonth">Rendus ce mois</span></button>
     </section>
 
     <div class="toolbar">
@@ -101,7 +110,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
     <div class="tablebox">
       <table>
         <thead><tr>
-          <th data-i18n="thSlip">Bordereau</th><th data-i18n="thItem">Matériel</th><th data-i18n="thBorrower">Emprunteur</th><th data-i18n="thSite">Site</th><th data-i18n="thLoaned">Prêté le</th><th data-i18n="thDue">Retour prévu</th><th data-i18n="thStatus">Statut</th><th></th>
+          <th scope="col" data-sort="slip" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thSlip">Bordereau</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="item" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thItem">Matériel</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="borrower" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thBorrower">Emprunteur</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="site" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thSite">Site</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="loaned" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thLoaned">Prêté le</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="due" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thDue">Retour prévu</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="status" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thStatus">Statut</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col"><span class="sr-only" data-i18n="thActions">Actions</span></th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -127,7 +136,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         <button class="chip" type="button" data-s="available" aria-pressed="false" data-i18n="iAvail">Disponibles</button>
         <button class="chip" type="button" data-s="loaned" aria-pressed="false" data-i18n="iLoaned">Prêtés</button>
       </div>
-      <select id="iCat" class="filter"></select>
+      <select id="iCat" class="filter" data-i18n-title="allCatsLabel"></select>
       <div class="actions">
         <button class="btn primary" id="newEqBtn" type="button" data-i18n="newEquipment">+ Ajouter un équipement</button>
       </div>
@@ -135,7 +144,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
     <div class="tablebox">
       <table class="inv">
         <thead><tr>
-          <th data-i18n="thState">État</th><th data-i18n="thEquipment">Équipement</th><th data-i18n="thSerialTag">N° de série · inventaire</th><th data-i18n="thSite">Site</th><th data-i18n="thWhere">Actuellement</th><th></th>
+          <th scope="col" data-sort="state" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thState">État</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="name" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thEquipment">Équipement</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="serial" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thSerialTag">N° de série · inventaire</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="site" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thSite">Site</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col" data-sort="where" aria-sort="none"><button type="button" class="sortbtn"><span data-i18n="thWhere">Actuellement</span><svg viewBox="0 0 12 16" aria-hidden="true"><path class="u" d="M6 2 2 7h8z"/><path class="d" d="M6 14 2 9h8z"/></svg></button></th><th scope="col"><span class="sr-only" data-i18n="thActions">Actions</span></th>
         </tr></thead>
         <tbody id="invRows"></tbody>
       </table>
@@ -177,7 +186,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
       </div>
       <div class="tablebox flat">
         <table class="restable">
-          <thead><tr><th data-i18n="thRes">Réservation</th><th data-i18n="thItem">Matériel</th><th data-i18n="thBorrower">Emprunteur</th><th data-i18n="thPeriod">Période</th><th data-i18n="thStatus">Statut</th><th></th></tr></thead>
+          <thead><tr><th scope="col" data-i18n="thRes">Réservation</th><th scope="col" data-i18n="thItem">Matériel</th><th scope="col" data-i18n="thBorrower">Emprunteur</th><th scope="col" data-i18n="thPeriod">Période</th><th scope="col" data-i18n="thStatus">Statut</th><th scope="col"><span class="sr-only" data-i18n="thActions">Actions</span></th></tr></thead>
           <tbody id="resRows"></tbody>
         </table>
         <div class="empty" id="resEmpty" hidden><p id="resEmptyText"></p></div>
@@ -234,8 +243,9 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
 
   <!-- ================= SETTINGS ================= -->
   <main id="view-settings" class="view" hidden>
+    <button type="button" class="totop" id="toTop" hidden data-i18n-title="toTop" title="Back to top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
     <form id="settingsForm" class="settings" novalidate>
-      <section class="card">
+      <section class="card" id="set-general" data-sec="sGeneral">
         <h2 data-i18n="sGeneral">Général</h2>
         <div class="grid2">
           <label><span data-i18n="sOrg">Organisation</span><input id="s_orgName"></label>
@@ -291,7 +301,50 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="set-archive" data-sec="sArchive">
+        <h2 data-i18n="sArchive">Archive</h2>
+        <p class="sub" data-i18n="sArchiveHelp"></p>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="arcOnLbl" data-i18n="sArchiveOn">Archive old loans automatically</span><small data-i18n="sArchiveOnHelp"></small></div>
+          <label class="switch"><input id="s_archiveEnabled" type="checkbox" role="switch" aria-labelledby="arcOnLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+        <div class="grid3">
+          <label><span data-i18n="sArchiveAfter">Archive loans returned more than</span>
+            <select id="s_archiveMonths"></select>
+          </label>
+        </div>
+        <div class="actions">
+          <button class="btn" type="button" id="arcView"><span data-i18n="arcView">View archived loans</span> <span class="count" id="arcCount"></span></button>
+          <a class="btn" id="arcDl" href="/api/archive/export" download data-i18n="arcDownload">Download the list (.txt)</a>
+          <button class="btn danger" type="button" id="arcEmpty" data-i18n="arcEmpty">Empty the archive</button>
+        </div>
+        <p class="sub" id="arcStatus" role="status"></p>
+      </section>
+
+      <section class="card" id="set-a11y" data-sec="sA11y">
+        <h2 data-i18n="sA11y">Accessibility</h2>
+        <p class="sub" data-i18n="sA11yHelp"></p>
+        <div class="grid3">
+          <label><span data-i18n="a11yText">Text size</span>
+            <select id="a11yText"><option value="" data-i18n="a11yTextN">Normal</option><option value="lg" data-i18n="a11yTextL">Large</option><option value="xl" data-i18n="a11yTextXL">Extra large</option></select>
+          </label>
+        </div>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="a11yContrastLbl" data-i18n="a11yContrast">Higher contrast</span><small data-i18n="a11yContrastH"></small></div>
+          <label class="switch"><input id="a11yContrast" type="checkbox" role="switch" aria-labelledby="a11yContrastLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="a11yMotionLbl" data-i18n="a11yMotion">Reduce motion</span><small data-i18n="a11yMotionH"></small></div>
+          <label class="switch"><input id="a11yMotion" type="checkbox" role="switch" aria-labelledby="a11yMotionLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="a11yFocusLbl" data-i18n="a11yFocus">Stronger focus outline</span><small data-i18n="a11yFocusH"></small></div>
+          <label class="switch"><input id="a11yFocus" type="checkbox" role="switch" aria-labelledby="a11yFocusLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+        <p class="sub" data-i18n="a11yNote"></p>
+      </section>
+
+      <section class="card" id="set-loans" data-sec="sLoans">
         <h2 data-i18n="sLoans">Prêts</h2>
         <div class="grid3">
           <label><span data-i18n="sDefaultDays">Durée par défaut (jours)</span><input id="s_defaultLoanDays" type="number" min="1" max="365"></label>
@@ -306,9 +359,13 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
           <div class="swtext"><span class="swtitle" id="issuerLbl" data-i18n="sRequireIssuer">Rendre « Remis par » obligatoire</span><small data-i18n="sRequireIssuerHelp"></small></div>
           <label class="switch"><input id="s_requireIssuedBy" type="checkbox" role="switch" aria-labelledby="issuerLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
         </div>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="sigLbl" data-i18n="sSignature">Collect signatures on screen</span><small data-i18n="sSignatureHelp"></small></div>
+          <label class="switch"><input id="s_signatureOn" type="checkbox" role="switch" aria-labelledby="sigLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="set-lists" data-sec="sLists">
         <h2 data-i18n="sLists">Listes de choix</h2>
         <p class="sub" data-i18n="sListsHelp"></p>
         <div class="grid3">
@@ -330,7 +387,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="set-slip" data-sec="sSlip">
         <h2 data-i18n="sSlip">Bordereau</h2>
         <label><span data-i18n="sTerms">Texte</span><textarea id="s_terms" rows="6"></textarea><small data-i18n="sTermsHelp"></small></label>
       </section>
@@ -340,7 +397,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         <button class="btn primary" type="submit" id="saveSettings" data-i18n="sSave">Enregistrer les paramètres</button>
       </div>
 
-      <section class="card collapsible" id="intCard">
+      <section class="card collapsible" id="intCard" data-sec="sIntegrations">
         <div class="card-head">
           <h2 data-i18n="sIntegrations">Integrations</h2>
           <button class="iconbtn" type="button" id="intToggle" aria-expanded="true" aria-controls="intBody" data-i18n-title="intHide" title="Hide"><svg class="eye-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.7 10.7 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.5 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7c1.8 0 3.4-.5 4.8-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
@@ -377,15 +434,18 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="set-data" data-sec="sData">
         <h2 data-i18n="sData">Données</h2>
-        <p class="sub" data-i18n="sDataHelp"></p>
         <div class="actions">
           <button class="btn" type="button" id="exportBtn2" data-i18n="exportCsv">Exporter CSV</button>
           <button class="btn" type="button" id="importBtn" data-i18n="importCsv">Import CSV</button>
           <a class="btn" href="/api/backup" data-i18n="sBackup">Télécharger une sauvegarde (.db)</a>
           <input type="file" id="importFile" accept=".csv,text/csv,text/plain" hidden>
+          <button class="btn" type="button" id="restoreBtn" data-i18n="sRestore">Restore from a backup…</button>
+          <input type="file" id="restoreFile" accept=".db,application/octet-stream,application/x-sqlite3" hidden>
         </div>
+        <p class="sub" data-i18n="sDataHelp"></p>
+        <p class="sub" id="restoreMsg" role="status"></p>
         <div class="importbox" id="importBox" hidden>
           <div class="importhead"><strong id="importName"></strong><button class="btn small" type="button" id="importCancel" data-i18n="cancel">Cancel</button></div>
           <p class="sub" id="importSummary"></p>
@@ -393,21 +453,29 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
           <div class="actions"><button class="btn primary" type="button" id="importGo" data-i18n="importGo">Import</button><button type="button" class="link" id="importTpl" data-i18n="importTpl">Download a template</button></div>
         </div>
         <p class="sub" data-i18n="importHelp"></p>
+        <p class="sub" data-i18n="sRestoreHelp"></p>
       </section>
 
       <footer class="about">
-        <a class="gh" id="ghLink" href="https://github.com/Alex-Mlts/tally" target="_blank" rel="noopener noreferrer" data-i18n-title="viewSource" title="View source">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span data-i18n="viewSource">View source</span>
-        </a>
+        <span class="about-left">
+          <a class="gh" id="ghLink" href="https://github.com/Alex-Mlts/tally" target="_blank" rel="noopener noreferrer" data-i18n-title="viewSource" title="View source">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span data-i18n="viewSource">View source</span>
+          </a>
+          <button class="gh" id="helpBtn" type="button" aria-haspopup="dialog" data-i18n-title="help" title="Help">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M9.4 9.6a2.7 2.7 0 1 1 3.9 2.4c-.9.5-1.3 1-1.3 2" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="17" r="1.15"/></svg><span data-i18n="help">Help</span>
+          </button>
+        </span>
         <span class="ver"><img src="tally-icon.png" alt="" width="40" height="40"><span id="aboutVer">Tally</span><span class="dot" aria-hidden="true">·</span><button type="button" class="link" id="whatsNewBtn" data-i18n="whatsNew">Nouveautés</button></span>
       </footer>
     </form>
   </main>
 </div>
 
+<div class="menu" id="rowMenu" role="menu" hidden></div>
+
 <!-- ======== loan form ======== -->
 <div class="scrim" id="sheet" hidden>
-  <aside class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
     <div class="sheet-head"><h2 id="sheetTitle"></h2><button class="btn small" type="button" id="closeSheet" data-i18n="close">Fermer</button></div>
     <form id="form" novalidate>
       <p class="info" id="fromRes" hidden></p>
@@ -443,36 +511,44 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         </div>
         <label><span><span data-i18n="fNotes">Remarques</span> <span class="opt" data-i18n="optional"></span></span><textarea id="f_notes"></textarea></label>
       </fieldset>
-      <p class="err" id="formErr" hidden></p>
+      <fieldset class="sigfield" id="sigFieldOut" hidden>
+        <legend data-i18n="sigBorrower">Borrower's signature</legend>
+        <div class="sigpad" id="sigPadOut"></div>
+      </fieldset>
+      <p class="err" role="alert" id="formErr" hidden></p>
       <div class="formfoot">
         <button class="btn danger" type="button" id="delBtn" data-i18n="delete">Supprimer</button>
         <button class="btn" type="button" id="cancelForm" data-i18n="cancel">Annuler</button>
         <button class="btn primary" type="submit" id="saveBtn"></button>
       </div>
     </form>
-  </aside>
+  </div>
 </div>
 
 <!-- ======== return form ======== -->
 <div class="scrim" id="retSheet" hidden>
-  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="retTitle">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="retTitle">
     <div class="sheet-head"><h2 id="retTitle" data-i18n="retTitle">Enregistrer le retour</h2><button class="btn small" type="button" id="closeRet" data-i18n="close">Fermer</button></div>
     <form id="retForm" novalidate>
       <p class="sub" id="retWhat"></p>
       <label class="narrow"><span data-i18n="rDate">Date de retour</span><input id="r_date" type="date" required></label>
       <div class="retlist" id="retItems"></div>
-      <p class="err" id="retErr" hidden></p>
+      <fieldset class="sigfield" id="sigFieldIn" hidden>
+        <legend data-i18n="sigReturn">Signature on return</legend>
+        <div class="sigpad" id="sigPadIn"></div>
+      </fieldset>
+      <p class="err" role="alert" id="retErr" hidden></p>
       <div class="formfoot">
         <button class="btn" type="button" id="cancelRet" data-i18n="cancel">Annuler</button>
         <button class="btn primary" type="submit" data-i18n="rSubmit">Valider le retour</button>
       </div>
     </form>
-  </aside>
+  </div>
 </div>
 
 <!-- ======== extend form ======== -->
 <div class="scrim" id="extSheet" hidden>
-  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="extTitle">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="extTitle">
     <div class="sheet-head"><h2 id="extTitle" data-i18n="extTitle">Prolonger le prêt</h2><button class="btn small" type="button" id="closeExt" data-i18n="close">Fermer</button></div>
     <form id="extForm" novalidate>
       <p class="sub" id="extWhat"></p>
@@ -487,18 +563,18 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
       </div>
       <label><span><span data-i18n="extReason">Motif</span> <span class="opt" data-i18n="optional"></span></span><input id="x_reason" data-i18n-ph="extReasonPh"></label>
       <div class="exthist" id="extHist"></div>
-      <p class="err" id="extErr" hidden></p>
+      <p class="err" role="alert" id="extErr" hidden></p>
       <div class="formfoot">
         <button class="btn" type="button" id="cancelExt" data-i18n="cancel">Annuler</button>
         <button class="btn primary" type="submit" data-i18n="extSubmit">Prolonger</button>
       </div>
     </form>
-  </aside>
+  </div>
 </div>
 
 <!-- ======== equipment form ======== -->
 <div class="scrim" id="eqSheet" hidden>
-  <aside class="sheet" role="dialog" aria-modal="true" aria-labelledby="eqTitle">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="eqTitle">
     <div class="sheet-head"><h2 id="eqTitle"></h2><button class="btn small" type="button" id="closeEq" data-i18n="close">Fermer</button></div>
     <form id="eqForm" novalidate>
       <label><span data-i18n="fItem">Désignation</span><input id="e_name" required data-i18n-ph="fItemPh"></label>
@@ -511,19 +587,19 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         <label><span><span data-i18n="fTag">N° d'inventaire</span> <span class="opt" data-i18n="optional"></span></span><input id="e_assetTag" class="mono"></label>
       </div>
       <label><span><span data-i18n="fNotes">Remarques</span> <span class="opt" data-i18n="optional"></span></span><textarea id="e_notes"></textarea></label>
-      <p class="err" id="eqErr" hidden></p>
+      <p class="err" role="alert" id="eqErr" hidden></p>
       <div class="formfoot">
         <button class="btn danger" type="button" id="eqDel" data-i18n="delete">Supprimer</button>
         <button class="btn" type="button" id="cancelEq" data-i18n="cancel">Annuler</button>
         <button class="btn primary" type="submit" id="eqSave"></button>
       </div>
     </form>
-  </aside>
+  </div>
 </div>
 
 <!-- ======== reservation form ======== -->
 <div class="scrim" id="resSheet" hidden>
-  <aside class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="resTitle">
+  <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="resTitle">
     <div class="sheet-head"><h2 id="resTitle"></h2><button class="btn small" type="button" id="closeRes" data-i18n="close">Fermer</button></div>
     <form id="resForm" novalidate>
       <fieldset>
@@ -555,24 +631,24 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         </div>
         <label><span><span data-i18n="fNotes">Remarques</span> <span class="opt" data-i18n="optional"></span></span><textarea id="v_notes"></textarea></label>
       </fieldset>
-      <p class="err" id="resErr" hidden></p>
+      <p class="err" role="alert" id="resErr" hidden></p>
       <div class="formfoot">
         <button class="btn" type="button" id="cancelRes" data-i18n="cancel">Annuler</button>
         <button class="btn primary" type="submit" id="resSave"></button>
       </div>
     </form>
-  </aside>
+  </div>
 </div>
 
 <!-- ======== history ======== -->
 <div class="scrim" id="histSheet" hidden>
-  <aside class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="histTitle">
+  <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="histTitle">
     <div class="sheet-head"><div><div class="eyebrow" id="histKind"></div><h2 id="histTitle"></h2></div><button class="btn small" type="button" id="closeHist" data-i18n="close">Fermer</button></div>
     <div class="histbody">
       <div class="histsum" id="histSum"></div>
       <div id="histList"></div>
     </div>
-  </aside>
+  </div>
 </div>
 
 <!-- ======== slip ======== -->
@@ -588,6 +664,122 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
       </div>
     </div>
     <div class="paper"><iframe id="slipFrame" title="Bordereau"></iframe></div>
+  </div>
+</div>
+
+<div class="setup" id="setupModal" hidden>
+  <div class="setup-card" role="dialog" aria-modal="true" aria-labelledby="setupTitle">
+    <div class="setup-hero" aria-hidden="true">
+      <i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i>
+
+      <div class="scene s0">
+        <div class="slot"></div>
+        <div class="slipwrap">
+          <div class="slip">
+            <div class="sl-head"><i class="sl-logo"></i><b>Tally</b><span>PR-0001</span></div>
+            <div class="sl-row"><em data-i18n="thItem">Items</em><span class="sl-val" data-i18n="setupSlipItem">Something</span></div>
+            <div class="sl-row"><em data-i18n="thBorrower">Borrower</em><span class="sl-val" data-i18n="setupSlipWho">Someone</span></div>
+            <div class="sl-row"><em data-i18n="thDue">Due</em><span class="sl-val" data-i18n="setupSlipDue">Tomorrow</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene s1">
+        <div class="mock" id="suMock">
+          <div class="mk-bar"><i></i><i></i><i></i></div>
+          <div class="mk-body">
+            <div class="mk-side"><b></b><b></b><b></b></div>
+            <div class="mk-main">
+              <div class="mk-row"><u></u><s></s></div>
+              <div class="mk-row"><u></u><s></s></div>
+              <div class="mk-row"><u></u><s></s></div>
+              <div class="mk-btn"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="scene s2">
+        <div class="sbadge" id="suBadge">
+          <div class="bd-mark" id="suBdMark">T</div>
+          <div class="bd-text">
+            <b id="suBdName">Tally</b>
+            <span class="bd-chip" id="suBdPrefix">PR-0001</span>
+          </div>
+          <svg class="bd-ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" pathLength="100"/></svg>
+          <span class="bd-days" id="suBdDays">14</span>
+        </div>
+      </div>
+
+      <div class="scene s3">
+        <div class="done">
+          <i class="done-ring r1"></i><i class="done-ring r2"></i>
+          <svg class="done-check" viewBox="0 0 64 64"><circle class="disc" cx="32" cy="32" r="28"/><path d="M20.5 33.5l8 8 16-18"/></svg>
+        </div>
+      </div>
+    </div>
+    <div class="setup-body">
+      <div class="setup-steps" id="setupDots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <p class="setup-count" id="setupCount"></p>
+
+      <section class="setup-pane" data-step="0">
+        <h2 id="setupTitle" data-i18n="setupWelcome">Welcome to Tally</h2>
+        <p data-i18n="setupWelcomeText"></p>
+        <div class="setup-label" data-i18n="setupLang">Language</div>
+        <div class="seg" role="group" id="setupLang"><button type="button" data-lang="en">English</button><button type="button" data-lang="fr">Français</button></div>
+      </section>
+
+      <section class="setup-pane" data-step="1" hidden>
+        <h2 data-i18n="setupLook">Pick a look</h2>
+        <p data-i18n="setupLookText"></p>
+        <div class="setup-themes" id="setupThemes"></div>
+      </section>
+
+      <section class="setup-pane" data-step="2" hidden>
+        <h2 data-i18n="setupOrg">Your organisation</h2>
+        <p data-i18n="setupOrgText"></p>
+        <label class="setup-field"><span data-i18n="setupOrgName">Organisation name</span><input id="su_orgName" type="text" maxlength="120" autocomplete="organization" data-i18n-ph="setupOrgPh"></label>
+        <div class="setup-two">
+          <label class="setup-field"><span data-i18n="setupPrefix">Slip prefix</span><input id="su_slipPrefix" type="text" maxlength="8" value="PR"></label>
+          <label class="setup-field"><span data-i18n="setupDays">Default loan (days)</span><input id="su_days" type="number" min="1" max="365" value="14"></label>
+        </div>
+      </section>
+
+      <section class="setup-pane" data-step="3" hidden>
+        <h2 data-i18n="setupDone">You're all set</h2>
+        <p data-i18n="setupDoneText"></p>
+        <div class="setup-quick">
+          <button type="button" class="btn" id="suImport" data-i18n="setupImport">Import a CSV</button>
+          <button type="button" class="btn" id="suKeys" data-i18n="setupShortcuts">See shortcuts</button>
+        </div>
+      </section>
+
+      <p class="setup-err" id="setupErr" role="alert" hidden></p>
+      <div class="setup-actions">
+        <button type="button" class="btn link-skip" id="suSkip" data-i18n="setupSkip">Skip</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" id="suBack" data-i18n="setupBack">Back</button>
+        <button type="button" class="btn primary" id="suNext" data-i18n="setupNext">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="help" id="helpModal" hidden>
+  <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+    <div class="help-bg" id="helpBg" aria-hidden="true"></div>
+    <div class="help-body">
+      <div class="help-head">
+        <div>
+          <h2 id="helpTitle" data-i18n="helpTitle">Keyboard shortcuts</h2>
+          <p data-i18n="helpIntro"></p>
+        </div>
+        <button class="help-close" type="button" id="closeHelp" data-i18n-title="close" title="Close" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="help-list" id="helpList"></div>
+    </div>
   </div>
 </div>
 
@@ -614,7 +806,28 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
 
 <div class="tip" id="tip" hidden></div>
 <datalist id="borrowers"></datalist>
-<div class="toast" id="toast" hidden></div>
+<!-- ======== archived loans ======== -->
+<div class="scrim" id="arcModal" hidden>
+  <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="arcTitle">
+    <div class="sheet-head"><h2 id="arcTitle" data-i18n="arcTitle">Archived loans</h2><button class="btn small" type="button" id="closeArc" data-i18n="close">Close</button></div>
+    <p class="sub" id="arcModalSub"></p>
+    <div class="arcbar">
+      <label class="check"><input type="checkbox" id="arcAll"><span data-i18n="arcSelectAll">Select all</span></label>
+      <span class="sub" id="arcSel" role="status"></span>
+      <button class="btn danger small" type="button" id="arcDelSel" data-i18n="arcDeleteSel" disabled>Delete selected</button>
+    </div>
+    <div class="tablebox arcscroll"><table class="arctbl">
+      <caption class="sr-only" data-i18n="arcTitle">Archived loans</caption>
+      <thead><tr><th scope="col"><span class="sr-only" data-i18n="arcSelectCol">Select</span></th><th scope="col" data-i18n="thSlip">Slip</th><th scope="col" data-i18n="thBorrower">Borrower</th><th scope="col" data-i18n="thItem">Items</th><th scope="col" data-i18n="thLoaned">Loaned</th><th scope="col" data-i18n="arcReturned">Returned</th></tr></thead>
+      <tbody id="arcRows"></tbody>
+    </table></div>
+    <p class="empty-note" id="arcEmptyNote" hidden data-i18n="arcNone">Nothing in the archive.</p>
+  </div>
+</div>
+
+<nav class="rail" id="rail" aria-label="Sections" hidden><span class="rail-line" aria-hidden="true"><i class="rail-fill" id="railFill"></i></span><ol id="railList"></ol><span class="rail-thumb" id="railThumb" aria-hidden="true"></span></nav>
+
+<div class="toast" id="toast" hidden role="status" aria-live="polite"></div>
 
 <script src="/vendor/qrcode.js"></script>
 <script src="i18n.js"></script>

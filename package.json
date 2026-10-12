@@ -1,6 +1,7 @@
 {
   "name": "registre-prets",
-  "version": "1.19.0",
+  "version": "1.9.0",
+  "license": "MIT",
   "description": "Registre des prêts de matériel du service informatique (Express + SQLite)",
   "repository": { "type": "git", "url": "https://github.com/Alex-Mlts/tally" },
   "main": "server.js",

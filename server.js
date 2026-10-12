@@ -131,6 +131,9 @@ db.exec("DROP TABLE IF EXISTS email_log; DELETE FROM meta WHERE key = 'mail_last
 const loanCols = db.prepare("PRAGMA table_info(loans)").all().map(c => c.name);
 if (!loanCols.includes("original_due")) db.exec("ALTER TABLE loans ADD COLUMN original_due TEXT NOT NULL DEFAULT ''");
 if (!loanCols.includes("extension_count")) db.exec("ALTER TABLE loans ADD COLUMN extension_count INTEGER NOT NULL DEFAULT 0");
+// v1.22: archive and on-screen signatures
+if (!loanCols.includes("archived_at")) db.exec("ALTER TABLE loans ADD COLUMN archived_at TEXT NOT NULL DEFAULT ''");
+db.exec("CREATE TABLE IF NOT EXISTS loan_signatures (loan_id INTEGER NOT NULL, kind TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (loan_id, kind))");
 
 // ---------- Migration v1.2 -> v1.3 : un prêt = plusieurs objets, inventaire ----------
 const getMeta = k => (db.prepare("SELECT value FROM meta WHERE key = ?").get(k) || {}).value;
@@ -189,6 +192,10 @@ const DEFAULT_SETTINGS = {
   categories: [],
   terms: "",
   theme: "auto",
+  setupDone: false,
+  signatureOn: false,
+  archiveEnabled: false,
+  archiveMonths: 12,
 };
 const str = (v, max = 200) => String(v ?? "").trim().slice(0, max);
 
@@ -208,6 +215,10 @@ function sanitizeSettings(input) {
   for (const k of ["sites", "departments", "categories"]) if (k in input) out[k] = list(input[k]);
   if ("theme" in input) out.theme = THEMES.includes(input.theme) ? input.theme : "auto";
   if ("dateFormat" in input) out.dateFormat = DATE_FORMATS.includes(input.dateFormat) ? input.dateFormat : "DD/MM/YYYY";
+  if ("setupDone" in input) out.setupDone = !!input.setupDone;
+  if ("signatureOn" in input) out.signatureOn = !!input.signatureOn;
+  if ("archiveEnabled" in input) out.archiveEnabled = !!input.archiveEnabled;
+  if ("archiveMonths" in input) out.archiveMonths = int(input.archiveMonths, 1, 120, 12);
   if ("terms" in input) out.terms = str(input.terms, 4000);
   return out;
 }
@@ -216,6 +227,11 @@ function getSettings() {
   let saved = {};
   try { saved = row ? JSON.parse(row.json) : {}; } catch (_) {}
   if (!("terms" in saved) && (saved.termsFr || saved.termsEn)) saved.terms = (saved.defaultLang === "en" ? saved.termsEn || saved.termsFr : saved.termsFr || saved.termsEn) || ""; // v1.7: one slip text
+  // Installs that predate the first-run setup (already configured or already holding data) skip it
+  if (!("setupDone" in saved)) {
+    const used = db.prepare("SELECT (SELECT COUNT(*) FROM loans) + (SELECT COUNT(*) FROM equipment) AS n").get().n;
+    saved.setupDone = !!saved.orgName || used > 0;
+  }
   const rest = {};
   for (const k of Object.keys(DEFAULT_SETTINGS)) if (k in saved) rest[k] = saved[k]; // ignore les anciennes clés (listes d'états, e-mails)
   const logo = db.prepare("SELECT updated_at FROM files WHERE key = 'logo'").get();
@@ -245,19 +261,32 @@ const itemToApi = r => ({
   returnDate: r.return_date, conditionIn: r.condition_in, returnNotes: r.return_notes,
 });
 const eventToApi = r => { let d = {}; try { d = JSON.parse(r.data); } catch (_) {} return { type: r.type, at: r.at, ...d }; };
-const loanToApi = (r, items, events) => ({
+const sigFlags = loanIds => {
+  const rows = db.prepare("SELECT loan_id, kind FROM loan_signatures").all();
+  const m = {}; for (const x of rows) (m[x.loan_id] ||= {})[x.kind] = true;
+  return m;
+};
+const loanToApi = (r, items, events, sig = {}) => ({
   id: r.id, slipNo: r.slip_no, borrower: r.borrower, department: r.department, site: r.site,
   contact: r.contact, purpose: r.purpose, issuedBy: r.issued_by, loanDate: r.loan_date, dueDate: r.due_date,
   originalDue: r.original_due || "", extensionCount: r.extension_count || 0,
   notes: r.notes, returnDate: r.return_date, createdAt: r.created_at, updatedAt: r.updated_at,
-  items: items.map(itemToApi), events: events.map(eventToApi),
+  items: items.map(itemToApi), events: events.map(eventToApi), hasSigOut: !!sig.out, hasSigIn: !!sig.in,
 });
 function loadLoan(id) {
   const r = db.prepare("SELECT * FROM loans WHERE id = ?").get(id);
   if (!r) return null;
   return loanToApi(r,
     db.prepare("SELECT * FROM loan_items WHERE loan_id = ? ORDER BY id").all(id),
-    db.prepare("SELECT * FROM loan_events WHERE loan_id = ? ORDER BY id").all(id));
+    db.prepare("SELECT * FROM loan_events WHERE loan_id = ? ORDER BY id").all(id),
+    sigFlags()[id] || {});
+}
+const cleanSig = v => { const s = String(v || ""); return s.length <= 300000 && /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(s) ? s : ""; };
+function saveSig(loanId, kind, v) {
+  if (v === undefined) return;
+  const s = cleanSig(v);
+  if (!s) db.prepare("DELETE FROM loan_signatures WHERE loan_id = ? AND kind = ?").run(loanId, kind);
+  else db.prepare("INSERT INTO loan_signatures (loan_id, kind, data) VALUES (?, ?, ?) ON CONFLICT(loan_id, kind) DO UPDATE SET data = excluded.data").run(loanId, kind, s);
 }
 const addEvent = (loanId, type, data = {}) =>
   db.prepare("INSERT INTO loan_events (loan_id, type, at, data) VALUES (?, ?, ?, ?)").run(loanId, type, nowIso(), JSON.stringify(data));
@@ -276,13 +305,15 @@ function cleanItem(b) {
   out.id = b.id ? Number(b.id) : null;
   return out;
 }
-class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
+// Server messages follow the global language setting: HttpError(status, french, english)
+const LANG_EN = () => getSettings().defaultLang === "en";
+class HttpError extends Error { constructor(status, fr, en) { super(en !== undefined && LANG_EN() ? en : fr); this.status = status; } }
 
 function validateHeader(v) {
   const needDept = getSettings().departments.length > 0;
-  if (["borrower", ...(needDept ? ["department"] : []), "loan_date", "due_date"].some(k => !v[k])) throw new HttpError(400, "Champs obligatoires manquants : emprunteur, service et dates.");
-  if (!ISO.test(v.loan_date) || !ISO.test(v.due_date)) throw new HttpError(400, "Dates invalides (format AAAA-MM-JJ).");
-  if (v.due_date < v.loan_date) throw new HttpError(400, "La date de retour prévue doit être postérieure à la date de prêt.");
+  if (["borrower", ...(needDept ? ["department"] : []), "loan_date", "due_date"].some(k => !v[k])) throw new HttpError(400, "Champs obligatoires manquants : emprunteur, service et dates.", `Required fields missing: borrower, department and dates.`);
+  if (!ISO.test(v.loan_date) || !ISO.test(v.due_date)) throw new HttpError(400, "Dates invalides (format AAAA-MM-JJ).", `Invalid dates (format YYYY-MM-DD).`);
+  if (v.due_date < v.loan_date) throw new HttpError(400, "La date de retour prévue doit être postérieure à la date de prêt.", `The due date must be after the loan date.`);
 }
 
 // Objet non rendu correspondant à cet équipement ou à ce n° de série (hors prêt `exceptLoanId`)
@@ -296,14 +327,14 @@ function activeItemFor({ equipmentId, serial }, exceptLoanId = 0) {
 
 // Relie l'objet à l'inventaire (lien fourni, n° de série connu, ou création) et vérifie qu'il est libre
 function prepareItem(it, loanId, site) {
-  if (!it.item && !it.equipment_id) throw new HttpError(400, "Chaque objet doit avoir une désignation et un n° de série.");
+  if (!it.item && !it.equipment_id) throw new HttpError(400, "Chaque objet doit avoir une désignation et un n° de série.", `Each item needs a name and a serial number.`);
   let eq = it.equipment_id ? db.prepare("SELECT * FROM equipment WHERE id = ?").get(it.equipment_id) : null;
   if (!eq && it.serial) eq = db.prepare("SELECT * FROM equipment WHERE serial = ? COLLATE NOCASE").get(it.serial);
   if (eq) { it.equipment_id = eq.id; it.item = eq.name; it.serial = eq.serial; it.category = it.category || eq.category; it.asset_tag = it.asset_tag || eq.asset_tag; }
-  if (!it.item || !it.serial) throw new HttpError(400, "Chaque objet doit avoir une désignation et un n° de série.");
+  if (!it.item || !it.serial) throw new HttpError(400, "Chaque objet doit avoir une désignation et un n° de série.", `Each item needs a name and a serial number.`);
   const busy = activeItemFor({ equipmentId: eq ? eq.id : null, serial: it.serial }, loanId);
-  if (busy) throw new HttpError(409, `« ${it.item} » (S/N ${it.serial}) est déjà prêté : bordereau ${busy.slip_no}, ${busy.borrower}.`);
-  if (eq && eq.status === "loaned") throw new HttpError(409, `« ${eq.name} » (S/N ${eq.serial}) est marqué comme prêté dans l'inventaire. Repassez-le en disponible (point vert) avant de le prêter.`);
+  if (busy) throw new HttpError(409, `« ${it.item} » (S/N ${it.serial}) est déjà prêté : bordereau ${busy.slip_no}, ${busy.borrower}.`, `“${it.item}” (S/N ${it.serial}) is already on loan: slip ${busy.slip_no}, ${busy.borrower}.`);
+  if (eq && eq.status === "loaned") throw new HttpError(409, `« ${eq.name} » (S/N ${eq.serial}) est marqué comme prêté dans l'inventaire. Repassez-le en disponible (point vert) avant de le prêter.`, `“${eq.name}” (S/N ${eq.serial}) is marked as on loan in the inventory. Set it back to available (green dot) before lending it.`);
   if (!eq && it.add_to_inventory) {
     const t = nowIso();
     const id = Number(db.prepare(`INSERT INTO equipment (name, category, serial, asset_tag, site, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'available', ?, ?)`)
@@ -337,7 +368,12 @@ const nextSlip = year => {
 };
 
 // ---------- Réservations : conflits ----------
-const frDate = iso => iso ? iso.split("-").reverse().join("/") : "";
+const frDate = iso => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  const f = getSettings().dateFormat;
+  return f === "MM/DD/YYYY" ? `${m}/${d}/${y}` : f === "YYYY-MM-DD" ? iso : f === "DD.MM.YYYY" ? `${d}.${m}.${y}` : f === "DD-MM-YYYY" ? `${d}-${m}-${y}` : `${d}/${m}/${y}`;
+};
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 // Réservation active qui chevauche [start, end] pour cet équipement
@@ -350,7 +386,7 @@ function assertNoReservationClash(items, start, end, opts) {
   for (const it of items) {
     if (!it.equipment_id) continue;
     const c = reservationClash(it.equipment_id, start, end, opts);
-    if (c) throw new HttpError(409, `« ${it.item} » est réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}, ${c.borrower}). Changez les dates ou annulez la réservation.`);
+    if (c) throw new HttpError(409, `« ${it.item} » est réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}, ${c.borrower}). Changez les dates ou annulez la réservation.`, `“${it.item}” is reserved from ${frDate(c.start_date)} to ${frDate(c.end_date)} (${c.res_no}, ${c.borrower}). Change the dates or cancel the reservation.`);
   }
 }
 const nextResNo = year => {
@@ -412,11 +448,12 @@ app.get("/api/version", (req, res) => res.json({ version: VERSION, repo: REPO })
 
 // --- Prêts ---
 app.get("/api/loans", route((req, res) => {
-  const loans = db.prepare("SELECT * FROM loans ORDER BY created_at DESC").all();
+  const loans = db.prepare("SELECT * FROM loans WHERE archived_at = '' ORDER BY created_at DESC").all();
   const by = rows => rows.reduce((m, r) => ((m[r.loan_id] ||= []).push(r), m), {});
   const ib = by(db.prepare("SELECT * FROM loan_items ORDER BY id").all());
   const eb = by(db.prepare("SELECT * FROM loan_events ORDER BY id").all());
-  res.json(loans.map(l => loanToApi(l, ib[l.id] || [], eb[l.id] || [])));
+  const sg = sigFlags();
+  res.json(loans.map(l => loanToApi(l, ib[l.id] || [], eb[l.id] || [], sg[l.id] || {})));
 }));
 
 app.post("/api/loans", route((req, res) => {
@@ -424,16 +461,16 @@ app.post("/api/loans", route((req, res) => {
   const h = cleanHeader(body);
   validateHeader(h);
   const rawItems = Array.isArray(body.items) ? body.items : [];
-  if (!rawItems.length) throw new HttpError(400, "Ajoutez au moins un objet au prêt.");
-  if (rawItems.length > 50) throw new HttpError(400, "50 objets maximum par prêt.");
+  if (!rawItems.length) throw new HttpError(400, "Ajoutez au moins un objet au prêt.", `Add at least one item to the loan.`);
+  if (rawItems.length > 50) throw new HttpError(400, "50 objets maximum par prêt.", `Maximum 50 items per loan.`);
   const id = tx(() => {
     const items = rawItems.map(cleanItem).map(it => prepareItem(it, 0, h.site));
     const serials = items.map(i => i.serial.toLowerCase());
-    if (new Set(serials).size !== serials.length) throw new HttpError(400, "Le même n° de série figure deux fois dans ce prêt.");
+    if (new Set(serials).size !== serials.length) throw new HttpError(400, "Le même n° de série figure deux fois dans ce prêt.", `The same serial number appears twice in this loan.`);
     const resId = Number(body.reservationId) || 0;
     if (resId) {
       const r = db.prepare("SELECT * FROM reservations WHERE id = ?").get(resId);
-      if (!r || r.status !== "active") throw new HttpError(409, "Cette réservation n'est plus active.");
+      if (!r || r.status !== "active") throw new HttpError(409, "Cette réservation n'est plus active.", `This reservation is no longer active.`);
     }
     assertNoReservationClash(items, h.loan_date, h.due_date, { exceptResId: resId });
     const t = nowIso();
@@ -442,6 +479,7 @@ app.post("/api/loans", route((req, res) => {
     const loanId = Number(db.prepare(`INSERT INTO loans (slip_no, item, serial, ${cols.join(",")}, created_at, updated_at)
       VALUES (?, ?, ?, ${cols.map(() => "?").join(",")}, ?, ?)`).run(slip, items[0].item, items[0].serial, ...cols.map(c => h[c]), t, t).lastInsertRowid);
     for (const it of items) { insertItem(loanId, it); setEquipStatus(it.equipment_id, "loaned"); }
+    saveSig(loanId, "out", body.signatureOut);
     syncLoan(loanId);
     if (resId) {
       db.prepare("UPDATE reservations SET status = 'converted', loan_id = ?, updated_at = ? WHERE id = ?").run(loanId, t, resId);
@@ -455,7 +493,7 @@ app.post("/api/loans", route((req, res) => {
 
 app.put("/api/loans/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM loans WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Prêt introuvable.");
+  if (!cur) throw new HttpError(404, "Prêt introuvable.", `Loan not found.`);
   const body = req.body || {};
   const h = { ...cur, ...cleanHeader(body) };
   validateHeader(h);
@@ -484,11 +522,12 @@ app.put("/api/loans/:id", route((req, res) => {
         }
       }
       const all = db.prepare("SELECT serial FROM loan_items WHERE loan_id = ?").all(cur.id).map(r => r.serial.toLowerCase());
-      if (!all.length) throw new HttpError(400, "Un prêt doit contenir au moins un objet.");
-      if (new Set(all).size !== all.length) throw new HttpError(400, "Le même n° de série figure deux fois dans ce prêt.");
+      if (!all.length) throw new HttpError(400, "Un prêt doit contenir au moins un objet.", `A loan must contain at least one item.`);
+      if (new Set(all).size !== all.length) throw new HttpError(400, "Le même n° de série figure deux fois dans ce prêt.", `The same serial number appears twice in this loan.`);
     }
     const openNow = db.prepare("SELECT * FROM loan_items WHERE loan_id = ? AND return_date = ''").all(cur.id);
     assertNoReservationClash(openNow, h.loan_date, h.due_date, { exceptLoanId: cur.id });
+    if ("signatureOut" in body) saveSig(cur.id, "out", body.signatureOut);
     syncLoan(cur.id);
     addEvent(cur.id, "edited");
   })();
@@ -497,10 +536,10 @@ app.put("/api/loans/:id", route((req, res) => {
 
 app.post("/api/loans/:id/return", route((req, res) => {
   const cur = db.prepare("SELECT * FROM loans WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Prêt introuvable.");
+  if (!cur) throw new HttpError(404, "Prêt introuvable.", `Loan not found.`);
   const b = req.body || {};
   const date = str(b.returnDate, 10);
-  if (!ISO.test(date)) throw new HttpError(400, "Date de retour invalide.");
+  if (!ISO.test(date)) throw new HttpError(400, "Date de retour invalide.", `Invalid return date.`);
   tx(() => {
     const open = db.prepare("SELECT * FROM loan_items WHERE loan_id = ? AND return_date = ''").all(cur.id);
     const list = Array.isArray(b.items) ? b.items : open.map(i => ({ id: i.id, conditionIn: b.conditionIn, returnNotes: b.returnNotes }));
@@ -513,7 +552,8 @@ app.post("/api/loans/:id/return", route((req, res) => {
       setEquipStatus(it.equipment_id, "available");
       n++;
     }
-    if (!n) throw new HttpError(400, "Sélectionnez au moins un objet à rendre.");
+    if (!n) throw new HttpError(400, "Sélectionnez au moins un objet à rendre.", `Select at least one item to return.`);
+    if (b.signatureIn) saveSig(cur.id, "in", b.signatureIn);
     syncLoan(cur.id);
     addEvent(cur.id, "returned", { date, items: n, partial: n < open.length });
   })();
@@ -522,12 +562,12 @@ app.post("/api/loans/:id/return", route((req, res) => {
 
 app.post("/api/loans/:id/extend", route((req, res) => {
   const cur = db.prepare("SELECT * FROM loans WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Prêt introuvable.");
-  if (cur.return_date) throw new HttpError(400, "Ce prêt est déjà rendu.");
+  if (!cur) throw new HttpError(404, "Prêt introuvable.", `Loan not found.`);
+  if (cur.return_date) throw new HttpError(400, "Ce prêt est déjà rendu.", `This loan has already been returned.`);
   const b = req.body || {};
   const due = str(b.dueDate, 10);
-  if (!ISO.test(due)) throw new HttpError(400, "Nouvelle date invalide.");
-  if (due <= cur.due_date) throw new HttpError(400, "La nouvelle date doit être postérieure à la date de retour actuelle.");
+  if (!ISO.test(due)) throw new HttpError(400, "Nouvelle date invalide.", `Invalid new date.`);
+  if (due <= cur.due_date) throw new HttpError(400, "La nouvelle date doit être postérieure à la date de retour actuelle.", `The new date must be after the current due date.`);
   const openNow = db.prepare("SELECT * FROM loan_items WHERE loan_id = ? AND return_date = ''").all(cur.id);
   assertNoReservationClash(openNow, cur.loan_date, due, { exceptLoanId: cur.id });
   tx(() => {
@@ -536,6 +576,12 @@ app.post("/api/loans/:id/extend", route((req, res) => {
     addEvent(cur.id, "extended", { from: cur.due_date, to: due, reason: str(b.reason, 300) });
   })();
   res.json(loadLoan(cur.id));
+}));
+
+app.get("/api/loans/:id/signatures", route((req, res) => {
+  const rows = db.prepare("SELECT kind, data FROM loan_signatures WHERE loan_id = ?").all(req.params.id);
+  const out = { out: "", in: "" }; for (const r of rows) out[r.kind] = r.data;
+  res.json(out);
 }));
 
 // --- Annuler une suppression : instantané en mémoire, rétabli avec les mêmes identifiants ---
@@ -554,18 +600,18 @@ function insertRow(table, row) {
 }
 app.post("/api/undo/:token", route((req, res) => {
   const entry = undoStore.get(req.params.token);
-  if (!entry) throw new HttpError(410, "Cette suppression ne peut plus être annulée.");
+  if (!entry) throw new HttpError(410, "Cette suppression ne peut plus être annulée.", `This deletion can no longer be undone.`);
   const d = entry.data;
   tx(() => {
     if (entry.kind === "loan") {
-      if (db.prepare("SELECT 1 FROM loans WHERE id = ?").get(d.loan.id)) throw new HttpError(409, "Ce prêt existe déjà.");
+      if (db.prepare("SELECT 1 FROM loans WHERE id = ?").get(d.loan.id)) throw new HttpError(409, "Ce prêt existe déjà.", `This loan already exists.`);
       const open = d.items.filter(i => !i.return_date);
       for (const it of open) {
         const busy = activeItemFor({ equipmentId: it.equipment_id, serial: it.serial });
-        if (busy) throw new HttpError(409, `Impossible d'annuler : « ${it.item} » est maintenant sur le prêt ${busy.slip_no}.`);
+        if (busy) throw new HttpError(409, `Impossible d'annuler : « ${it.item} » est maintenant sur le prêt ${busy.slip_no}.`, `Cannot undo: “${it.item}” is now on loan ${busy.slip_no}.`);
         if (it.equipment_id) {
           const c = reservationClash(it.equipment_id, d.loan.loan_date, d.loan.due_date);
-          if (c) throw new HttpError(409, `Impossible d'annuler : « ${it.item} » est réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}).`);
+          if (c) throw new HttpError(409, `Impossible d'annuler : « ${it.item} » est réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}).`, `Cannot undo: “${it.item}” is reserved from ${frDate(c.start_date)} to ${frDate(c.end_date)} (${c.res_no}).`);
         }
       }
       insertRow("loans", d.loan);
@@ -575,13 +621,14 @@ app.post("/api/undo/:token", route((req, res) => {
         if (!it.return_date && it.equipment_id) setEquipStatus(it.equipment_id, "loaned");
       }
       for (const ev of d.events) insertRow("loan_events", ev);
+      for (const sg of d.signatures || []) insertRow("loan_signatures", sg);
     } else if (entry.kind === "equipment") {
       insertRow("equipment", d.equipment);
       for (const id of d.loanItemIds) db.prepare("UPDATE loan_items SET equipment_id = ? WHERE id = ?").run(d.equipment.id, id);
     } else if (entry.kind === "reservation") {
       if (d.reservation.status === "active") for (const it of d.items) {
         const c = it.equipment_id && reservationClash(it.equipment_id, d.reservation.start_date, d.reservation.end_date);
-        if (c) throw new HttpError(409, `Impossible d'annuler : le matériel est maintenant réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}).`);
+        if (c) throw new HttpError(409, `Impossible d'annuler : le matériel est maintenant réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}).`, `Cannot undo: the equipment is now reserved from ${frDate(c.start_date)} to ${frDate(c.end_date)} (${c.res_no}).`);
       }
       insertRow("reservations", d.reservation);
       for (const it of d.items) insertRow("reservation_items", it);
@@ -593,9 +640,10 @@ app.post("/api/undo/:token", route((req, res) => {
 
 app.delete("/api/loans/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM loans WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Prêt introuvable.");
-  const token = stash("loan", { loan: cur, items: db.prepare("SELECT * FROM loan_items WHERE loan_id = ?").all(cur.id), events: db.prepare("SELECT * FROM loan_events WHERE loan_id = ?").all(cur.id) });
+  if (!cur) throw new HttpError(404, "Prêt introuvable.", `Loan not found.`);
+  const token = stash("loan", { loan: cur, items: db.prepare("SELECT * FROM loan_items WHERE loan_id = ?").all(cur.id), events: db.prepare("SELECT * FROM loan_events WHERE loan_id = ?").all(cur.id), signatures: db.prepare("SELECT * FROM loan_signatures WHERE loan_id = ?").all(cur.id) });
   tx(() => {
+    db.prepare("DELETE FROM loan_signatures WHERE loan_id = ?").run(cur.id);
     for (const it of db.prepare("SELECT * FROM loan_items WHERE loan_id = ? AND return_date = ''").all(cur.id)) setEquipStatus(it.equipment_id, "available");
     db.prepare("DELETE FROM loan_items WHERE loan_id = ?").run(cur.id);
     db.prepare("DELETE FROM loan_events WHERE loan_id = ?").run(cur.id);
@@ -623,8 +671,8 @@ app.get("/api/equipment", route((req, res) => {
 
 app.post("/api/equipment", route((req, res) => {
   const v = cleanEq(req.body || {});
-  if (!v.name || !v.serial) throw new HttpError(400, "La désignation et le n° de série sont obligatoires.");
-  if (db.prepare("SELECT 1 FROM equipment WHERE serial = ? COLLATE NOCASE").get(v.serial)) throw new HttpError(409, `Le n° de série ${v.serial} existe déjà dans l'inventaire.`);
+  if (!v.name || !v.serial) throw new HttpError(400, "La désignation et le n° de série sont obligatoires.", `Name and serial number are required.`);
+  if (db.prepare("SELECT 1 FROM equipment WHERE serial = ? COLLATE NOCASE").get(v.serial)) throw new HttpError(409, `Le n° de série ${v.serial} existe déjà dans l'inventaire.`, `Serial number ${v.serial} already exists in the inventory.`);
   const t = nowIso();
   const status = req.body.status === "loaned" ? "loaned" : "available";
   const id = db.prepare(`INSERT INTO equipment (name, category, serial, asset_tag, site, notes, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -634,8 +682,8 @@ app.post("/api/equipment", route((req, res) => {
 
 app.post("/api/equipment/import", route((req, res) => {
   const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
-  if (!rows) throw new HttpError(400, "Aucune ligne à importer.");
-  if (rows.length > 5000) throw new HttpError(400, "Trop de lignes (5000 maximum).");
+  if (!rows) throw new HttpError(400, "Aucune ligne à importer.", `No rows to import.`);
+  if (rows.length > 5000) throw new HttpError(400, "Trop de lignes (5000 maximum).", `Too many rows (5000 maximum).`);
   const seen = new Set(), out = { added: 0, duplicates: 0, invalid: 0 };
   const t = nowIso();
   const ins = db.prepare(`INSERT INTO equipment (name, category, serial, asset_tag, site, notes, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'available', ?, ?)`);
@@ -655,10 +703,10 @@ app.post("/api/equipment/import", route((req, res) => {
 
 app.put("/api/equipment/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM equipment WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Équipement introuvable.");
+  if (!cur) throw new HttpError(404, "Équipement introuvable.", `Equipment not found.`);
   const v = { ...cur, ...cleanEq(req.body || {}) };
-  if (!v.name || !v.serial) throw new HttpError(400, "La désignation et le n° de série sont obligatoires.");
-  if (db.prepare("SELECT 1 FROM equipment WHERE serial = ? COLLATE NOCASE AND id != ?").get(v.serial, cur.id)) throw new HttpError(409, `Le n° de série ${v.serial} existe déjà dans l'inventaire.`);
+  if (!v.name || !v.serial) throw new HttpError(400, "La désignation et le n° de série sont obligatoires.", `Name and serial number are required.`);
+  if (db.prepare("SELECT 1 FROM equipment WHERE serial = ? COLLATE NOCASE AND id != ?").get(v.serial, cur.id)) throw new HttpError(409, `Le n° de série ${v.serial} existe déjà dans l'inventaire.`, `Serial number ${v.serial} already exists in the inventory.`);
   db.prepare("UPDATE equipment SET name = ?, category = ?, serial = ?, asset_tag = ?, site = ?, notes = ?, updated_at = ? WHERE id = ?")
     .run(v.name, v.category, v.serial, v.asset_tag, v.site, v.notes, nowIso(), cur.id);
   res.json(eqToApi(db.prepare("SELECT * FROM equipment WHERE id = ?").get(cur.id)));
@@ -666,11 +714,11 @@ app.put("/api/equipment/:id", route((req, res) => {
 
 app.post("/api/equipment/:id/status", route((req, res) => {
   const cur = db.prepare("SELECT * FROM equipment WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Équipement introuvable.");
+  if (!cur) throw new HttpError(404, "Équipement introuvable.", `Equipment not found.`);
   const status = req.body && req.body.status === "loaned" ? "loaned" : "available";
   if (status === "available") {
     const busy = activeItemFor({ equipmentId: cur.id, serial: cur.serial });
-    if (busy) return res.status(409).json({ error: `Cet équipement est sur le prêt ${busy.slip_no} (${busy.borrower}). Enregistrez le retour pour le rendre disponible.`, code: "on_loan", loanId: busy.loan_id });
+    if (busy) return res.status(409).json({ error: LANG_EN() ? `This equipment is on loan ${busy.slip_no} (${busy.borrower}). Record the return to make it available.` : `Cet équipement est sur le prêt ${busy.slip_no} (${busy.borrower}). Enregistrez le retour pour le rendre disponible.`, code: "on_loan", loanId: busy.loan_id });
   }
   setEquipStatus(cur.id, status);
   res.json(eqToApi(db.prepare("SELECT * FROM equipment WHERE id = ?").get(cur.id)));
@@ -678,11 +726,11 @@ app.post("/api/equipment/:id/status", route((req, res) => {
 
 app.delete("/api/equipment/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM equipment WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Équipement introuvable.");
+  if (!cur) throw new HttpError(404, "Équipement introuvable.", `Equipment not found.`);
   const busy = activeItemFor({ equipmentId: cur.id, serial: cur.serial });
-  if (busy) throw new HttpError(409, `Impossible de supprimer : l'équipement est sur le prêt ${busy.slip_no}.`);
+  if (busy) throw new HttpError(409, `Impossible de supprimer : l'équipement est sur le prêt ${busy.slip_no}.`, `Cannot delete: the equipment is on loan ${busy.slip_no}.`);
   const resv = reservationClash(cur.id, localToday(), "9999-12-31");
-  if (resv) throw new HttpError(409, `Impossible de supprimer : l'équipement est réservé (${resv.res_no}, ${resv.borrower}).`);
+  if (resv) throw new HttpError(409, `Impossible de supprimer : l'équipement est réservé (${resv.res_no}, ${resv.borrower}).`, `Cannot delete: the equipment is reserved (${resv.res_no}, ${resv.borrower}).`);
   const token = stash("equipment", { equipment: cur, loanItemIds: db.prepare("SELECT id FROM loan_items WHERE equipment_id = ?").all(cur.id).map(r => r.id) });
   tx(() => {
     db.prepare("UPDATE loan_items SET equipment_id = NULL WHERE equipment_id = ?").run(cur.id); // l'historique garde désignation et n° de série
@@ -704,22 +752,22 @@ const loadRes = id => { const r = db.prepare("SELECT * FROM reservations WHERE i
 function saveReservation(body, existing) {
   const v = existing ? { ...existing } : {};
   for (const [k, c] of Object.entries(RES)) if (body[k] !== undefined) v[c] = str(body[k], 2000);
-  if (!v.borrower || (!v.department && getSettings().departments.length > 0)) throw new HttpError(400, "Indiquez l'emprunteur et le service.");
-  if (!ISO.test(v.start_date || "") || !ISO.test(v.end_date || "")) throw new HttpError(400, "Dates invalides.");
-  if (v.end_date < v.start_date) throw new HttpError(400, "La date de fin doit être postérieure au début.");
+  if (!v.borrower || (!v.department && getSettings().departments.length > 0)) throw new HttpError(400, "Indiquez l'emprunteur et le service.", `Enter the borrower and the department.`);
+  if (!ISO.test(v.start_date || "") || !ISO.test(v.end_date || "")) throw new HttpError(400, "Dates invalides.", `Invalid dates.`);
+  if (v.end_date < v.start_date) throw new HttpError(400, "La date de fin doit être postérieure au début.", `The end date must be after the start date.`);
   let ids = [...new Set((Array.isArray(body.items) ? body.items : []).map(i => Number(i.equipmentId)).filter(Boolean))];
   if (!ids.length && existing) ids = db.prepare("SELECT equipment_id FROM reservation_items WHERE reservation_id = ? AND equipment_id IS NOT NULL").all(existing.id).map(r => r.equipment_id);
-  if (!ids.length) throw new HttpError(400, "Choisissez au moins un équipement de l'inventaire.");
+  if (!ids.length) throw new HttpError(400, "Choisissez au moins un équipement de l'inventaire.", `Choose at least one item from the inventory.`);
   const resId = existing ? existing.id : 0;
   const eqs = ids.map(id => {
     const eq = db.prepare("SELECT * FROM equipment WHERE id = ?").get(id);
-    if (!eq) throw new HttpError(400, "Équipement introuvable dans l'inventaire.");
+    if (!eq) throw new HttpError(400, "Équipement introuvable dans l'inventaire.", `Equipment not found in the inventory.`);
     const c = reservationClash(eq.id, v.start_date, v.end_date, { exceptResId: resId });
-    if (c) throw new HttpError(409, `« ${eq.name} » est déjà réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}, ${c.borrower}).`);
+    if (c) throw new HttpError(409, `« ${eq.name} » est déjà réservé du ${frDate(c.start_date)} au ${frDate(c.end_date)} (${c.res_no}, ${c.borrower}).`, `“${eq.name}” is already reserved from ${frDate(c.start_date)} to ${frDate(c.end_date)} (${c.res_no}, ${c.borrower}).`);
     const out = db.prepare(`SELECT l.slip_no, l.borrower, l.due_date FROM loan_items li JOIN loans l ON l.id = li.loan_id
       WHERE li.equipment_id = ? AND li.return_date = '' LIMIT 1`).get(eq.id);
-    if (out && out.due_date >= v.start_date) throw new HttpError(409, `« ${eq.name} » est prêté jusqu'au ${frDate(out.due_date)} (${out.slip_no}, ${out.borrower}).`);
-    if (out && out.due_date < localToday()) throw new HttpError(409, `« ${eq.name} » n'est pas encore rendu : retour prévu le ${frDate(out.due_date)} (${out.slip_no}, ${out.borrower}).`);
+    if (out && out.due_date >= v.start_date) throw new HttpError(409, `« ${eq.name} » est prêté jusqu'au ${frDate(out.due_date)} (${out.slip_no}, ${out.borrower}).`, `“${eq.name}” is on loan until ${frDate(out.due_date)} (${out.slip_no}, ${out.borrower}).`);
+    if (out && out.due_date < localToday()) throw new HttpError(409, `« ${eq.name} » n'est pas encore rendu : retour prévu le ${frDate(out.due_date)} (${out.slip_no}, ${out.borrower}).`, `“${eq.name}” has not been returned yet: due back on ${frDate(out.due_date)} (${out.slip_no}, ${out.borrower}).`);
     return eq;
   });
   const t = nowIso();
@@ -747,20 +795,20 @@ app.get("/api/reservations", route((req, res) => {
 app.post("/api/reservations", route((req, res) => { res.status(201).json(loadRes(saveReservation(req.body || {}, null))); }));
 app.put("/api/reservations/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM reservations WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Réservation introuvable.");
-  if (cur.status !== "active") throw new HttpError(409, "Seule une réservation active peut être modifiée.");
+  if (!cur) throw new HttpError(404, "Réservation introuvable.", `Reservation not found.`);
+  if (cur.status !== "active") throw new HttpError(409, "Seule une réservation active peut être modifiée.", `Only an active reservation can be edited.`);
   res.json(loadRes(saveReservation(req.body || {}, cur)));
 }));
 app.post("/api/reservations/:id/cancel", route((req, res) => {
   const cur = db.prepare("SELECT * FROM reservations WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Réservation introuvable.");
-  if (cur.status !== "active") throw new HttpError(409, "Cette réservation n'est plus active.");
+  if (!cur) throw new HttpError(404, "Réservation introuvable.", `Reservation not found.`);
+  if (cur.status !== "active") throw new HttpError(409, "Cette réservation n'est plus active.", `This reservation is no longer active.`);
   db.prepare("UPDATE reservations SET status = 'cancelled', updated_at = ? WHERE id = ?").run(nowIso(), cur.id);
   res.json(loadRes(cur.id));
 }));
 app.delete("/api/reservations/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM reservations WHERE id = ?").get(req.params.id);
-  if (!cur) throw new HttpError(404, "Réservation introuvable.");
+  if (!cur) throw new HttpError(404, "Réservation introuvable.", `Reservation not found.`);
   const token = stash("reservation", { reservation: cur, items: db.prepare("SELECT * FROM reservation_items WHERE reservation_id = ?").all(cur.id) });
   tx(() => {
     db.prepare("DELETE FROM reservation_items WHERE reservation_id = ?").run(req.params.id);
@@ -769,6 +817,59 @@ app.delete("/api/reservations/:id", route((req, res) => {
   res.json({ undo: token });
 }));
 
+// --- Archive: returned loans older than N months are hidden from the register (v1.22) ---
+function archiveCutoff(months) {
+  const d = new Date(); d.setMonth(d.getMonth() - months);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function runArchive() {
+  const st = getSettings();
+  if (!st.archiveEnabled) return 0;
+  const r = db.prepare("UPDATE loans SET archived_at = ? WHERE archived_at = '' AND return_date != '' AND return_date < ?").run(nowIso(), archiveCutoff(st.archiveMonths));
+  return Number(r.changes);
+}
+function archivedLoans() {
+  const loans = db.prepare("SELECT * FROM loans WHERE archived_at != '' ORDER BY return_date DESC, id DESC").all();
+  const by = rows => rows.reduce((m, r) => ((m[r.loan_id] ||= []).push(r), m), {});
+  const ib = by(db.prepare("SELECT * FROM loan_items ORDER BY id").all());
+  const sg = sigFlags();
+  return loans.map(l => ({ ...loanToApi(l, ib[l.id] || [], [], sg[l.id] || {}), archivedAt: l.archived_at }));
+}
+app.get("/api/archive", route((req, res) => {
+  if (req.query.count) return res.json({ count: db.prepare("SELECT COUNT(*) AS n FROM loans WHERE archived_at != ''").get().n });
+  const loans = archivedLoans(); res.json({ count: loans.length, loans });
+}));
+app.get("/api/archive/export", route((req, res) => {
+  const loans = archivedLoans(), en = LANG_EN(), st = getSettings();
+  const head = en
+    ? [`Tally: archived loans (${loans.length})`, `Exported on ${frDate(localToday())}`, `Rule: loans returned more than ${st.archiveMonths} month(s) ago`, ""]
+    : [`Tally : prêts archivés (${loans.length})`, `Exporté le ${frDate(localToday())}`, `Règle : prêts rendus il y a plus de ${st.archiveMonths} mois`, ""];
+  const lines = loans.map(l => {
+    const items = l.items.map(i => `${i.item} (S/N ${i.serial})`).join("; ");
+    return en
+      ? `${l.slipNo} | ${l.borrower}${l.department ? ` (${l.department})` : ""} | ${items} | loaned ${frDate(l.loanDate)} | returned ${frDate(l.returnDate)}`
+      : `${l.slipNo} | ${l.borrower}${l.department ? ` (${l.department})` : ""} | ${items} | prêté le ${frDate(l.loanDate)} | rendu le ${frDate(l.returnDate)}`;
+  });
+  res.set({ "Content-Type": "text/plain; charset=utf-8", "Content-Disposition": `attachment; filename="tally-archive-${localToday()}.txt"` });
+  res.send([...head, ...lines, ""].join("\r\n"));
+}));
+app.post("/api/archive/delete", route((req, res) => {
+  const b = req.body || {};
+  const ids = b.all ? db.prepare("SELECT id FROM loans WHERE archived_at != ''").all().map(r => r.id)
+    : (Array.isArray(b.ids) ? b.ids : []).map(Number).filter(n => Number.isInteger(n) && db.prepare("SELECT 1 FROM loans WHERE id = ? AND archived_at != ''").get(n));
+  tx(() => {
+    for (const id of ids) {
+      db.prepare("DELETE FROM loan_items WHERE loan_id = ?").run(id);
+      db.prepare("DELETE FROM loan_events WHERE loan_id = ?").run(id);
+      db.prepare("DELETE FROM loan_signatures WHERE loan_id = ?").run(id);
+      db.prepare("DELETE FROM loans WHERE id = ?").run(id);
+    }
+  })();
+  res.json({ deleted: ids.length });
+}));
+runArchive();
+setInterval(runArchive, 60 * 60 * 1000).unref();
+
 // --- Paramètres, sauvegarde ---
 app.get("/api/settings", (req, res) => res.json(getSettings()));
 
@@ -776,14 +877,14 @@ app.get("/api/settings", (req, res) => res.json(getSettings()));
 const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"];
 app.get("/api/logo", (req, res) => {
   const f = db.prepare("SELECT mime, data FROM files WHERE key = 'logo'").get();
-  if (!f) return res.status(404).json({ error: "Aucun logo." });
+  if (!f) return res.status(404).json({ error: LANG_EN() ? "No logo." : "Aucun logo." });
   res.set({ "Content-Type": f.mime, "Cache-Control": "no-cache", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'", "X-Content-Type-Options": "nosniff" });
   res.send(Buffer.from(f.data));
 });
 app.put("/api/logo", express.raw({ type: () => true, limit: "1mb" }), route((req, res) => {
   const mime = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
-  if (!LOGO_TYPES.includes(mime)) throw new HttpError(400, "Format non pris en charge : utilisez PNG, JPEG, WebP, GIF ou SVG.");
-  if (!req.body || !req.body.length) throw new HttpError(400, "Fichier vide.");
+  if (!LOGO_TYPES.includes(mime)) throw new HttpError(400, "Format non pris en charge : utilisez PNG, JPEG, WebP, GIF ou SVG.", `Unsupported format: use PNG, JPEG, WebP, GIF or SVG.`);
+  if (!req.body || !req.body.length) throw new HttpError(400, "Fichier vide.", `Empty file.`);
   db.prepare("INSERT INTO files (key, mime, data, updated_at) VALUES ('logo', ?, ?, ?) ON CONFLICT(key) DO UPDATE SET mime = excluded.mime, data = excluded.data, updated_at = excluded.updated_at")
     .run(mime, req.body, nowIso());
   res.json(getSettings());
@@ -793,15 +894,55 @@ app.put("/api/settings", (req, res) => {
   const { logoUpdated, ...cur } = getSettings();
   const next = { ...cur, ...sanitizeSettings(req.body || {}) };
   db.prepare("INSERT INTO settings (id, json) VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json").run(JSON.stringify(next));
+  runArchive();
   res.json(getSettings());
 });
 app.get("/api/backup", (req, res) => {
   const stamp = new Date().toISOString().slice(0, 10);
   const tmp = path.join(DATA_DIR, `backup-${Date.now()}.db`);
   try { db.prepare("VACUUM INTO ?").run(tmp); }
-  catch (e) { return res.status(500).json({ error: "Sauvegarde impossible : " + e.message }); }
+  catch (e) { return res.status(500).json({ error: (LANG_EN() ? "Backup failed: " : "Sauvegarde impossible : ") + e.message }); }
   res.download(tmp, `registre-prets-${stamp}.db`, () => fs.unlink(tmp, () => {}));
 });
+
+// Restore: copy every table of an uploaded Tally backup (.db) over the current data. A copy of the current data is kept first.
+const RESTORE_TABLES = ["loans", "loan_items", "loan_events", "loan_signatures", "equipment", "reservations", "reservation_items", "counters", "settings", "meta", "files"];
+app.post("/api/restore", express.raw({ type: () => true, limit: "300mb" }), route((req, res) => {
+  const buf = req.body;
+  if (!Buffer.isBuffer(buf) || buf.length < 100 || buf.subarray(0, 15).toString("latin1") !== "SQLite format 3")
+    throw new HttpError(400, "Ce fichier n'est pas une sauvegarde Tally (.db).", `This file is not a Tally backup (.db).`);
+  const stamp = Date.now();
+  const tmp = path.join(DATA_DIR, `restore-${stamp}.db`);
+  const safety = path.join(DATA_DIR, `before-restore-${new Date().toISOString().replace(/[:.]/g, "-")}.db`);
+  fs.writeFileSync(tmp, buf);
+  try {
+    const chk = new DatabaseSync(tmp);
+    try {
+      const ok = chk.prepare("PRAGMA integrity_check").get();
+      const names = chk.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(r => r.name);
+      if (String(Object.values(ok)[0]) !== "ok" || !["loans", "loan_items", "equipment", "settings"].every(n => names.includes(n)))
+        throw new HttpError(400, "Ce fichier n'est pas une sauvegarde Tally valide (ou elle est trop ancienne).", `This is not a valid Tally backup (or it is too old).`);
+    } finally { chk.close(); }
+    db.prepare("VACUUM INTO ?").run(safety);
+    db.prepare("ATTACH DATABASE ? AS bk").run(tmp);
+    try {
+      tx(() => {
+        for (const t of RESTORE_TABLES) {
+          const has = db.prepare("SELECT 1 FROM bk.sqlite_master WHERE type = 'table' AND name = ?").get(t);
+          const mine = db.prepare(`PRAGMA main.table_info(${t})`).all().map(c => c.name);
+          db.exec(`DELETE FROM main.${t}`);
+          if (!has) continue;
+          const theirs = db.prepare(`PRAGMA bk.table_info(${t})`).all().map(c => c.name);
+          const cols = mine.filter(c => theirs.includes(c));
+          if (cols.length) db.exec(`INSERT INTO main.${t} (${cols.join(",")}) SELECT ${cols.join(",")} FROM bk.${t}`);
+        }
+      })();
+    } finally { try { db.exec("DETACH DATABASE bk"); } catch (_) {} }
+    undoStore.clear();
+    runArchive();
+    res.json({ ok: true, safetyCopy: path.basename(safety) });
+  } finally { fs.unlink(tmp, () => {}); }
+}));
 
 app.get("/vendor/qrcode.js", (req, res) => res.sendFile(require.resolve("qrcode-generator/qrcode.js")));
 // Landing page at "/" and the app itself at "/app". The link-preview tags need absolute URLs, so fill in this server's address.
@@ -824,7 +965,7 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // Anything else: JSON 404 for the API, the custom 404 page for the browser
 const NOT_FOUND_HTML = fs.readFileSync(path.join(__dirname, "public", "404.html"), "utf8");
-app.use("/api", (req, res) => res.status(404).json({ error: "Introuvable." }));
+app.use("/api", (req, res) => res.status(404).json({ error: LANG_EN() ? "Not found." : "Introuvable." }));
 app.use((req, res) => {
   if (req.method !== "GET" && req.method !== "HEAD") return res.status(404).type("text").send("Not found");
   res.status(404).type("html").set("Cache-Control", "no-cache").send(NOT_FOUND_HTML);

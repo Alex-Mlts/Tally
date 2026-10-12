@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "1.19.0";
+  const APP_VERSION = "1.9.0";
   const $ = id => document.getElementById(id);
   const store = { get(k){ try{ return localStorage.getItem(k) || ""; }catch(_){ return ""; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(_){} } };
 
@@ -7,6 +7,18 @@
   let loans = [], equipment = [], loaded = false, online = true;
   let filter = "active", query = "", view = "registre";
   let invFilter = "all", invQuery = "", invCat = "";
+  // Column sorting (click a header: ascending, descending, back to the default order)
+  const sorts = { reg: {key:"",dir:1}, inv: {key:"",dir:1} };
+  const sortCollator = new Intl.Collator(undefined, {numeric:true, sensitivity:"base"});
+  const cmpVal = (a,b) => (typeof a === "number" && typeof b === "number") ? a-b : sortCollator.compare(String(a ?? ""), String(b ?? ""));
+  function applySort(list, st, getters){
+    if (!st.key || !getters[st.key]) return list;
+    const g = getters[st.key];
+    return list.map((x,i) => [x,i]).sort((a,b) => (cmpVal(g(a[0]), g(b[0])) * st.dir) || (a[1]-b[1])).map(x => x[0]);
+  }
+  function syncSortHeads(table, st){
+    table.querySelectorAll("th[data-sort]").forEach(th => th.setAttribute("aria-sort", th.dataset.sort === st.key ? (st.dir === 1 ? "ascending" : "descending") : "none"));
+  }
   let editingId = null, returningId = null, extendingId = null, eqEditingId = null, slipLoan = null;
   let formItems = [];
   let reservations = [], calMonth = "", calLayers = {loans:true, res:true}, resFilter = "upcoming";
@@ -83,6 +95,7 @@
     if ($("offline").dataset.outdated) $("offline").textContent = t("outdated", JSON.parse($("offline").dataset.outdated));
     else $("offline").textContent = t("offline");
     fillFilters();
+    fillArchiveOptions(); if (view === "settings") { buildRail(); updateRail(); }
   }
 
   // ---------- conditions (codes fixes, libellés traduits) ----------
@@ -163,8 +176,10 @@
     for (const name of VIEWS) $("view-"+name).hidden = name !== view;
     document.querySelectorAll(".tabs a").forEach(a => { if (a.dataset.view === view) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
     if (view === "settings") $("gearBtn").setAttribute("aria-current","page"); else $("gearBtn").removeAttribute("aria-current");
-    if (view === "settings"){ fillSettingsForm(); applyTheme(themeRadio()); }
-    else if (settings) applyTheme(settings.theme);
+    $("tabsNav").hidden = view === "settings"; $("backBar").hidden = view !== "settings";
+    $("skipLink").setAttribute("href", "#view-" + view);
+    if (view === "settings"){ fillSettingsForm(); applyTheme(themeRadio()); refreshArchiveCount(); settingsNavOn(); }
+    else { settingsNavOff(); if (settings) applyTheme(settings.theme); }
     renderAll();
   }
   function focusLoan(slip){
@@ -183,7 +198,7 @@
   }
 
   // ---------- registre ----------
-  function setFilter(f){ filter = f; document.querySelectorAll("#view-registre .chip").forEach(x => x.setAttribute("aria-pressed", x.dataset.f===f?"true":"false")); }
+  function setFilter(f){ filter = f; document.querySelectorAll("#view-registre .chip, #view-registre .stat[data-f]").forEach(x => x.setAttribute("aria-pressed", x.dataset.f===f?"true":"false")); }
 
   function renderRegister(){
     const today = isoToday(), month = today.slice(0,7);
@@ -208,8 +223,14 @@
       if (filter!=="back"){ const ra=a.returnDate?1:0, rb=b.returnDate?1:0; if(ra!==rb) return ra-rb; if(!a.returnDate && !b.returnDate) return a.dueDate.localeCompare(b.dueDate); }
       return (b.createdAt||"").localeCompare(a.createdAt||"");
     });
+    const rank = {late:0, soon:1, out:2, back:3};
+    const shownSorted = applySort(shown, sorts.reg, {
+      slip: l => l.slipNo, item: l => (l.items[0] && l.items[0].item) || "", borrower: l => l.borrower, site: l => l.site || "",
+      loaned: l => l.loanDate, due: l => l.dueDate, status: l => rank[status(l).key] * 1e4 + (l.dueDate || "").replace(/-/g,"") / 1e4
+    });
+    syncSortHeads($("rows").closest("table"), sorts.reg);
 
-    $("rows").innerHTML = shown.map(l => {
+    $("rows").innerHTML = shownSorted.map(l => {
       const s = status(l);
       const items = l.items.slice(0,3).map(i => `<div class="itemline${i.returnDate?" done":""}">${esc(i.item)} <button type="button" class="link serial" data-hist-serial="${esc(i.serial)}" title="${esc(t("openHistItem"))}">${esc(i.serial)}</button></div>`).join("");
       const more = l.items.length > 3 ? `<div class="sub">${esc(t("moreItems",{n:l.items.length-3}))}</div>` : "";
@@ -224,9 +245,10 @@
         <td class="mono">${fmt(l.dueDate)}${ext}</td>
         <td><span class="pill ${s.key}">${esc(s.label)}</span>${part}</td>
         <td><div class="rowacts">
-          <button class="btn small" type="button" data-act="slip" data-id="${l.id}">${esc(t("actSlip"))}</button>
-          ${l.returnDate?"":`<button class="btn small" type="button" data-act="ret" data-id="${l.id}">${esc(t("actReturn"))}</button><button class="btn small" type="button" data-act="ext" data-id="${l.id}">${esc(t("actExtend"))}</button>`}
-          <button class="btn small" type="button" data-act="edit" data-id="${l.id}">${esc(t("actEdit"))}</button>
+          ${l.returnDate
+            ? `<button class="btn small" type="button" data-act="slip" data-id="${l.id}">${esc(t("actSlip"))}</button>`
+            : `<button class="btn small accent" type="button" data-act="ret" data-id="${l.id}">${esc(t("actReturn"))}</button>`}
+          <button class="btn small more" type="button" data-more="${l.id}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("actMore"))}" title="${esc(t("actMore"))}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
         </div></td></tr>`;
     }).join("");
 
@@ -245,13 +267,54 @@
   $("rows").addEventListener("click", e => {
     const hs = e.target.closest("[data-hist-serial]"); if (hs){ openItemHistory({serial: hs.dataset.histSerial}); return; }
     const hb = e.target.closest("[data-hist-borrower]"); if (hb){ openBorrowerHistory(hb.dataset.histBorrower); return; }
+    const mb = e.target.closest("button[data-more]"); if (mb){ toggleRowMenu(mb); return; }
     const b = e.target.closest("button[data-act]"); if(!b) return;
-    const l = loanById(b.dataset.id); if(!l) return;
-    if (b.dataset.act==="slip") showSlip(l);
-    if (b.dataset.act==="ret") openReturn(l);
-    if (b.dataset.act==="ext") openExtend(l);
-    if (b.dataset.act==="edit") openForm(l);
+    rowAction(b.dataset.act, b.dataset.id);
   });
+  function rowAction(act, id){
+    const l = loanById(id); if(!l) return;
+    if (act==="slip") showSlip(l);
+    if (act==="ret") openReturn(l);
+    if (act==="ext") openExtend(l);
+    if (act==="edit") openForm(l);
+  }
+
+  // "⋯" menu of a register row
+  let menuBtn = null;
+  function closeRowMenu(focusBack){
+    const m = $("rowMenu"); if (m.hidden) return;
+    m.hidden = true; if (menuBtn){ menuBtn.setAttribute("aria-expanded","false"); if (focusBack) menuBtn.focus(); } menuBtn = null;
+  }
+  function toggleRowMenu(btn){
+    if (menuBtn === btn) return closeRowMenu(true);
+    closeRowMenu(false);
+    const l = loanById(btn.dataset.more); if (!l) return;
+    const items = [];
+    if (l.returnDate) items.push(["edit","actEdit"]);
+    else items.push(["slip","actSlip"],["ext","actExtend"],["edit","actEdit"]);
+    const m = $("rowMenu");
+    m.innerHTML = items.map(([a,k]) => `<button type="button" role="menuitem" data-act="${a}" data-id="${l.id}">${esc(t(k))}</button>`).join("");
+    m.hidden = false; menuBtn = btn; btn.setAttribute("aria-expanded","true");
+    const r = btn.getBoundingClientRect(), mw = m.offsetWidth, mh = m.offsetHeight;
+    m.style.left = Math.max(8, Math.min(innerWidth - mw - 8, r.right - mw)) + "px";
+    m.style.top = (r.bottom + mh + 12 > innerHeight ? Math.max(8, r.top - mh - 4) : r.bottom + 4) + "px";
+    m.querySelector("button").focus();
+  }
+  $("rowMenu").addEventListener("click", e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const act = b.dataset.act, id = b.dataset.id; closeRowMenu(false); rowAction(act, id);
+  });
+  $("rowMenu").addEventListener("keydown", e => {
+    const its = [...$("rowMenu").querySelectorAll("button")], i = its.indexOf(document.activeElement);
+    if (e.key === "ArrowDown"){ e.preventDefault(); its[(i+1)%its.length].focus(); }
+    else if (e.key === "ArrowUp"){ e.preventDefault(); its[(i-1+its.length)%its.length].focus(); }
+    else if (e.key === "Home"){ e.preventDefault(); its[0].focus(); }
+    else if (e.key === "End"){ e.preventDefault(); its[its.length-1].focus(); }
+    else if (e.key === "Tab"){ closeRowMenu(false); }
+  });
+  document.addEventListener("click", e => { if (!$("rowMenu").hidden && !e.target.closest("#rowMenu") && !e.target.closest("[data-more]")) closeRowMenu(false); });
+  addEventListener("scroll", () => closeRowMenu(false), true);
+  addEventListener("resize", () => closeRowMenu(false));
 
   // ---------- listes ----------
   function refreshLists(){
@@ -282,7 +345,12 @@
       if (!q) return true;
       return [e.name,e.serial,e.assetTag,e.category,e.site,e.notes,e.currentLoan&&e.currentLoan.borrower].join(" ").toLowerCase().includes(q);
     });
-    $("invRows").innerHTML = shown.map(e => {
+    const shownInv = applySort(shown, sorts.inv, {
+      state: e => eqState(e), name: e => e.name, serial: e => e.serial, site: e => e.site || "",
+      where: e => e.currentLoan ? e.currentLoan.slipNo : "~"
+    });
+    syncSortHeads($("invRows").closest("table"), sorts.inv);
+    $("invRows").innerHTML = shownInv.map(e => {
       const st = eqState(e);
       const where = e.currentLoan
         ? `<button type="button" class="link" data-focus-loan="${esc(e.currentLoan.slipNo)}">${esc(e.currentLoan.slipNo)}</button><div class="sub">${esc(t("whereLoan",{who:e.currentLoan.borrower, d:fmt(e.currentLoan.dueDate)}))}</div>`
@@ -306,6 +374,16 @@
     $("invEmptyTitle").textContent = equipment.length ? t("invNoMatch") : t("invEmpty");
     $("invEmptyText").textContent = equipment.length ? t("invNoMatchText") : t("invEmptyText");
   }
+  function bindSort(tbodyId, st, rerender){
+    $(tbodyId).closest("table").querySelector("thead").addEventListener("click", ev => {
+      const th = ev.target.closest("th[data-sort]"); if (!th) return;
+      const k = th.dataset.sort;
+      if (st.key !== k){ st.key = k; st.dir = 1; } else if (st.dir === 1){ st.dir = -1; } else { st.key = ""; st.dir = 1; }
+      rerender();
+    });
+  }
+  bindSort("rows", sorts.reg, () => renderRegister());
+  bindSort("invRows", sorts.inv, () => renderInventory());
   $("iq").addEventListener("input", e => { invQuery = e.target.value; renderInventory(); });
   $("iCat").addEventListener("change", e => { invCat = e.target.value; renderInventory(); });
   $("invChips").addEventListener("click", e => {
@@ -440,6 +518,35 @@
     formItems.splice(Number(b.dataset.rm), 1); renderItemRows(); refreshPicker();
   });
 
+  // ---------- on-screen signature pad ----------
+  function makeSigPad(host, labelKey){
+    host.innerHTML = `<canvas class="sigcanvas" role="img" aria-label="${esc(t(labelKey))}"></canvas><div class="sigtools"><span class="sub">${esc(t("sigHint"))}</span><button type="button" class="link" data-sig="clear">${esc(t("sigClear"))}</button></div>`;
+    const cv = host.querySelector("canvas"), ctx = cv.getContext("2d");
+    let drawing = false, empty = true, dirty = false, last = null, dpr = 1;
+    function fit(){
+      const r = cv.getBoundingClientRect(); dpr = Math.max(1, window.devicePixelRatio || 1);
+      cv.width = Math.max(10, Math.round(r.width * dpr)); cv.height = Math.max(10, Math.round(r.height * dpr));
+      ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.lineWidth = 2.4 * dpr; ctx.strokeStyle = "#111";
+    }
+    const pos = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * (cv.width / r.width), (e.clientY - r.top) * (cv.height / r.height)]; };
+    cv.addEventListener("pointerdown", e => { e.preventDefault(); cv.setPointerCapture(e.pointerId); drawing = true; last = pos(e); ctx.beginPath(); ctx.arc(last[0], last[1], ctx.lineWidth / 2, 0, 7); ctx.fillStyle = "#111"; ctx.fill(); empty = false; dirty = true; host.classList.add("signed"); });
+    cv.addEventListener("pointermove", e => { if (!drawing) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last = p; });
+    const end = () => { drawing = false; };
+    cv.addEventListener("pointerup", end); cv.addEventListener("pointercancel", end);
+    host.querySelector('[data-sig="clear"]').addEventListener("click", () => { fit(); empty = true; dirty = true; host.classList.remove("signed"); });
+    return {
+      // call once the field is visible so the canvas can be sized; `img` is an existing signature to show
+      reset(img){
+        fit(); empty = true; dirty = false; host.classList.remove("signed");
+        if (img){ const im = new Image(); im.onload = () => { const k = Math.min(cv.width / im.width, cv.height / im.height); ctx.drawImage(im, 0, 0, im.width * k, im.height * k); empty = false; host.classList.add("signed"); }; im.src = img; }
+      },
+      get dirty(){ return dirty; },
+      data(){ return empty ? "" : cv.toDataURL("image/png"); },
+    };
+  }
+  let padOut = null, padIn = null;
+  const ensurePads = () => { if (!padOut) padOut = makeSigPad($("sigPadOut"), "sigBorrower"); if (!padIn) padIn = makeSigPad($("sigPadIn"), "sigReturn"); };
+
   function openForm(l, presetEquipmentId, fromRes){
     editingId = l ? l.id : null;
     convertingRes = !l && fromRes ? fromRes : null;
@@ -459,7 +566,7 @@
     } else {
       const today = isoToday();
       $("f_loanDate").value = today; $("f_dueDate").value = addDays(today, settings.defaultLoanDays||14);
-      $("f_issuedBy").value = store.get("issuedBy");
+      $("f_issuedBy").value = "";
       formItems = [];
       const eq = presetEquipmentId && eqById(presetEquipmentId);
       if (eq) formItems.push({ equipmentId: eq.id, item: eq.name, category: eq.category, serial: eq.serial, assetTag: eq.assetTag, accessories: "", conditionOut: "good" });
@@ -475,6 +582,15 @@
     }
     renderItemRows(); refreshPicker();
     $("sheet").hidden = false; setTimeout(() => (l ? $("f_borrower") : $("invPick")).focus(), 50);
+    $("sigFieldOut").hidden = !settings.signatureOn;
+    if (settings.signatureOn){
+      ensurePads();
+      requestAnimationFrame(async () => {
+        let img = "";
+        if (l && l.hasSigOut) { try{ img = (await api("GET", `/api/loans/${l.id}/signatures`)).out; }catch(_){} }
+        padOut.reset(img);
+      });
+    }
   }
   const closeForm = () => { $("sheet").hidden = true; editingId = null; convertingRes = null; };
   $("f_loanDate").addEventListener("change", () => { if (!editingId && $("f_loanDate").value) $("f_dueDate").value = addDays($("f_loanDate").value, settings.defaultLoanDays||14); });
@@ -490,6 +606,7 @@
     if (v.dueDate < v.loanDate) return fail(t("errDates"));
     v.items = formItems.map(i => ({ id: i.id, equipmentId: i.equipmentId, item: String(i.item).trim(), serial: String(i.serial).trim(), category: i.category, assetTag: String(i.assetTag||"").trim(), accessories: String(i.accessories||"").trim(), conditionOut: i.conditionOut, addToInventory: !!i.addToInventory }));
     if (convertingRes) v.reservationId = convertingRes.id;
+    if (settings.signatureOn && padOut){ const sg = padOut.data(); if (editingId ? padOut.dirty : sg) v.signatureOut = sg; }
     $("saveBtn").disabled = true;
     try{
       if (v.issuedBy) store.set("issuedBy", v.issuedBy);
@@ -522,6 +639,8 @@
     }).join("");
     const all = $("retAll"); if (all) all.addEventListener("click", () => $("retItems").querySelectorAll('[data-r="on"]').forEach(c => c.checked = true));
     $("retSheet").hidden = false;
+    $("sigFieldIn").hidden = !settings.signatureOn;
+    if (settings.signatureOn){ ensurePads(); requestAnimationFrame(() => padIn.reset()); }
   }
   const closeRet = () => { $("retSheet").hidden = true; returningId = null; };
   $("retForm").addEventListener("submit", async e => {
@@ -530,7 +649,9 @@
     const items = [...$("retItems").querySelectorAll(".retrow")].filter(r => r.querySelector('[data-r="on"]').checked)
       .map(r => ({ id: Number(r.dataset.id), conditionIn: r.querySelector('[data-r="cond"]').value, returnNotes: r.querySelector('[data-r="notes"]').value.trim() }));
     if (!items.length){ $("retErr").textContent = t("rNone"); $("retErr").hidden = false; return; }
-    try{ await api("POST", `/api/loans/${returningId}/return`, {returnDate: $("r_date").value || isoToday(), items}); closeRet(); toast(t("tReturned")); await load(); }
+    const retBody = {returnDate: $("r_date").value || isoToday(), items};
+    if (settings.signatureOn && padIn){ const sg = padIn.data(); if (sg) retBody.signatureIn = sg; }
+    try{ await api("POST", `/api/loans/${returningId}/return`, retBody); closeRet(); toast(t("tReturned")); await load(); }
     catch(ex){ $("retErr").textContent = ex.message; $("retErr").hidden = false; }
   });
 
@@ -628,7 +749,7 @@
   }
   // standard agreement text; the organisation name is optional
   const defaultTerms = (code, org) => fill(I18N[code].slip.defaultTerms, {org: code === "en" ? (org || "the organisation") : (org ? ` (${org})` : "")});
-  function slipHTML(l){
+  function slipHTML(l, sigs = {}){
     const sl = slipLang();
     const row = (k,v) => `<tr><th>${k}</th><td>${v||"&nbsp;"}</td></tr>`;
     const org = settings.orgName || "";
@@ -670,9 +791,13 @@ table.kv th{width:32%}
 .terms{font-size:8.8pt;color:#333;border:1px solid #bbb;padding:7px 10px;margin-top:12px}
 .terms ul{margin:4px 0 0;padding-left:18px}
 .sigs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
-.sig{border:1px solid #bbb;padding:7px 10px;min-height:92px;font-size:9.5pt}
+.sig{border:1px solid #bbb;padding:7px 10px;min-height:92px;font-size:9.5pt;display:flex;flex-direction:column}
+.sig .sp{flex:1;min-height:30px}
 .sig b{display:block;margin-bottom:4px}
-.line{margin-top:36px;border-top:1px dotted #777;padding-top:3px;font-size:8.5pt;color:#555}
+.sigimg{display:block;max-height:50px;max-width:100%;margin:4px 0 0}
+.line.has{margin-top:0}
+.sigs.one{grid-template-columns:1fr 1fr}
+.line{margin-top:0;border-top:1px dotted #777;padding-top:3px;font-size:8.5pt;color:#555}
 footer{margin-top:12px;font-size:8pt;color:#666;display:flex;justify-content:space-between}.tl{display:inline-flex;align-items:center;gap:5px}
 tr{page-break-inside:avoid}
 </style></head><body>
@@ -690,15 +815,21 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
 </div>
 <div class="terms"><b>${esc(ts("terms"))}</b><ul>${terms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
 <div class="sigs">
-<div class="sig"><b>${esc(ts("borrowerSig"))}</b>${esc(ts("approved"))}<div class="line">${esc(ts("sign"))}</div></div>
-<div class="sig"><b>${esc(ts("itSig"))}</b>${esc(ts("handedBy"))} ${esc(l.issuedBy)}<div class="line">${esc(ts("sign"))}</div></div>
+<div class="sig"><b>${esc(ts("borrowerSig"))}</b>${esc(ts("approved"))}${sigs.out ? `<img class="sigimg" src="${sigs.out}" alt="">` : ""}<i class="sp"></i><div class="line${sigs.out ? " has" : ""}">${esc(ts("sign"))}</div></div>
+<div class="sig"><b>${esc(ts("itSig"))}</b>${esc(ts("handedBy"))} ${esc(l.issuedBy||"")}<i class="sp"></i><div class="line">${esc(ts("sign"))}</div></div>
 </div>
 <h2>${esc(ts("hReturn"))}</h2>
 <table class="items"><thead><tr><th class="c">${esc(ts("colNo"))}</th><th>${esc(ts("item"))}</th><th>${esc(ts("retDate"))}</th><th>${esc(ts("retCond"))}</th><th style="width:22%">${esc(ts("visa"))}</th></tr></thead><tbody>${ret}</tbody></table>
+${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</b><img class="sigimg" src="${sigs.in}" alt=""><i class="sp"></i><div class="line has">${esc(ts("sign"))}</div></div></div>` : ""}
 <footer><span>${esc(l.slipNo)}</span><span class="tl"><img src="data:image/png;base64,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" alt="" width="14" height="14">Tally · ${esc(ts("copies"))}</span></footer>
 </body></html>`;
   }
-  function showSlip(l){ slipLoan = l; $("slipFrame").srcdoc = slipHTML(l); $("slipModal").hidden = false; }
+  let slipSigs = {};
+  async function showSlip(l){
+    slipLoan = l; slipSigs = {};
+    if (l.hasSigOut || l.hasSigIn){ try{ slipSigs = await api("GET", `/api/loans/${l.id}/signatures`); }catch(_){} }
+    $("slipFrame").srcdoc = slipHTML(l, slipSigs); $("slipModal").hidden = false;
+  }
   function download(name, text, type){
     const url = URL.createObjectURL(new Blob([text], {type}));
     const a = Object.assign(document.createElement("a"), {href:url, download:name});
@@ -706,7 +837,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   $("printSlip").addEventListener("click", () => { try{ const w = $("slipFrame").contentWindow; w.focus(); w.print(); } catch(_){ toast(t("printErr")); } });
-  $("dlSlip").addEventListener("click", () => { if (slipLoan) download(`slip-${slipLoan.slipNo}.html`, slipHTML(slipLoan), "text/html"); });
+  $("dlSlip").addEventListener("click", () => { if (slipLoan) download(`slip-${slipLoan.slipNo}.html`, slipHTML(slipLoan, slipSigs), "text/html"); });
   $("closeSlip").addEventListener("click", () => { $("slipModal").hidden = true; slipLoan = null; });
 
   // ---------- CSV (une ligne par objet) ----------
@@ -918,7 +1049,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
   // ---------- paramètres ----------
   const S_TEXT = ["orgName","serviceName","publicUrl","slipPrefix","terms"];
   const S_NUM = ["defaultLoanDays","dueSoonDays","refreshSeconds"];
-  const S_BOOL = ["requireIssuedBy"];
+  const S_BOOL = ["requireIssuedBy","signatureOn","archiveEnabled"];
   const S_LIST = ["sites","departments","categories"];
   let pick = {sites:[], departments:[], categories:[]};
   function renderPicklists(){
@@ -958,6 +1089,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
     S_BOOL.forEach(k => $("s_"+k).checked = !!settings[k]);
     $("s_terms").placeholder = defaultTerms(lang, settings.orgName);
     $("s_dateFormat").value = settings.dateFormat || "DD/MM/YYYY";
+    fillArchiveOptions(); $("s_archiveMonths").value = String(settings.archiveMonths || 12);
     $("settingsMsg").textContent = "";
   }
   $("settingsForm").addEventListener("input", e => { if (!e.target.closest(".addrow") && e.target.id !== "logoFile") markDirty(); });
@@ -985,6 +1117,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
     S_LIST.forEach(k => body[k] = pick[k]);
     body.defaultLang = $("s_defaultLang").value;
     body.dateFormat = $("s_dateFormat").value;
+    body.archiveMonths = Number($("s_archiveMonths").value) || 12;
     body.theme = themeRadio();
     S_BOOL.forEach(k => body[k] = $("s_"+k).checked);
     $("saveSettings").disabled = true;
@@ -995,7 +1128,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
       settingsDirty = false; applyI18n(); if (!$("clModal").hidden) renderChangelog(); fillDateFormatOptions(); fillSettingsForm(); syncDateFields(); renderAll(); renderPicklists(); renderLogoSetting();
       if (!$("sheet").hidden) renderItemRows();
       $("settingsMsg").textContent = t("sSaved"); toast(t("sSaved"));
-      applyI18n(); refreshLists(); startRefresh();
+      applyI18n(); refreshLists(); startRefresh(); refreshArchiveCount(); load();
     }catch(ex){ $("settingsMsg").textContent = ex.status === 404 ? t("outdated",{page:APP_VERSION, server:"?"}) : (ex.message || t("sSaveErr")); }
     finally{ $("saveSettings").disabled = false; }
   });
@@ -1376,21 +1509,374 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
   $("closeRet").addEventListener("click", closeRet); $("cancelRet").addEventListener("click", closeRet);
   $("closeExt").addEventListener("click", closeExt); $("cancelExt").addEventListener("click", closeExt);
   $("q").addEventListener("input", e => { query = e.target.value; renderRegister(); });
-  document.querySelectorAll("#view-registre .chip").forEach(c => c.addEventListener("click", () => { setFilter(c.dataset.f); renderRegister(); }));
+  document.querySelectorAll("#view-registre .chip, #view-registre .stat[data-f]").forEach(c => c.addEventListener("click", () => { setFilter(c.dataset.f); renderRegister(); }));
   document.addEventListener("keydown", e => {
     if (e.key !== "Escape") return;
+    if (!$("helpModal").hidden) return closeHelp();
+    if (!$("rowMenu").hidden) return closeRowMenu(true);
     if (!$("notifPanel").hidden) return toggleNotif(false);
     if (!$("confirm").hidden) return $("cNo").click();
     if (!$("clModal").hidden) return $("closeCl").click();
     if (!$("slipModal").hidden) return $("closeSlip").click();
+    if (!$("arcModal").hidden) return $("closeArc").click();
     for (const [id, close] of [["histSheet", () => $("histSheet").hidden = true], ["resSheet", closeRes], ["extSheet", closeExt], ["retSheet", closeRet], ["eqSheet", closeEq], ["sheet", closeForm]])
       if (!$(id).hidden) return close();
   });
 
-  const anyOpen = () => ["sheet","retSheet","extSheet","eqSheet","resSheet","confirm"].some(id => !$(id).hidden);
+  const anyOpen = () => ["sheet","retSheet","extSheet","eqSheet","resSheet","confirm","arcModal"].some(id => !$(id).hidden);
+
+  // ---------- help window + keyboard shortcuts ----------
+  const MOD = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘" : "Ctrl";
+  const SHORTCUTS = [
+    ["scNav",     [[["1","2","3","4"], "scTabs"], [[","], "scSettings"], [["?"], "scHelp"]]],
+    ["scActions", [[["N"], "scNew"], [["/"], "scSearch"]]],
+    ["scCal",     [[["←","→"], "scMonth"], [["T"], "scToday"]]],
+    ["scWin",     [[[MOD,"Enter"], "scSave"], [["Esc"], "scClose"]]]
+  ];
+  let helpUnmount = null, helpLoading = false, helpGradientLoaded = false;
+  function renderHelp(){
+    let n = 0;
+    $("helpList").innerHTML = SHORTCUTS.map(([g, rows]) => `<div class="help-group"><h3>${esc(t(g))}</h3>${rows.map(([keys, d]) =>
+      `<div class="help-row" style="animation-delay:${(120 + 45 * n++)}ms"><span>${esc(t(d))}</span><span class="help-keys">${keys.map(k => `<kbd>${esc(k)}</kbd>`).join(keys[0] === MOD ? "<i>+</i>" : "")}</span></div>`).join("")}</div>`).join("");
+  }
+  function startHelpGradient(){
+    const bg = $("helpBg");
+    if (helpUnmount || helpLoading) return;
+    let ok = false; try{ const c = document.createElement("canvas"); ok = !!(c.getContext("webgl2") || c.getContext("webgl")); }catch(_){}
+    if (!ok || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const run = () => { if ($("helpModal").hidden) return; try{ helpUnmount = window.TallyGradient.mount(bg, "help"); setTimeout(() => bg.classList.add("ready"), 450); }catch(_){} };
+    if (window.TallyGradient){ run(); return; }
+    helpLoading = true;
+    const sc = document.createElement("script"); sc.src = "vendor/shadergradient.js";
+    sc.onload = () => { helpLoading = false; run(); };
+    sc.onerror = () => { helpLoading = false; };
+    document.head.appendChild(sc);
+  }
+  let helpFrom = null;
+  function openHelp(){
+    if (!$("helpModal").hidden) return;
+    helpFrom = document.activeElement;
+    renderHelp(); $("helpModal").hidden = false; $("closeHelp").focus();
+    startHelpGradient();
+  }
+  function closeHelp(){
+    if ($("helpModal").hidden) return;
+    $("helpModal").hidden = true; $("helpBg").classList.remove("ready");
+    if (helpUnmount){ try{ helpUnmount(); }catch(_){} helpUnmount = null; }
+    if (helpFrom && helpFrom.focus) helpFrom.focus(); helpFrom = null;
+  }
+  $("helpBtn").addEventListener("click", openHelp);
+  $("closeHelp").addEventListener("click", closeHelp);
+  $("helpModal").addEventListener("click", e => { if (e.target === $("helpModal")) closeHelp(); });
+  // keep Tab inside the window
+  $("helpModal").addEventListener("keydown", e => { if (e.key === "Tab"){ e.preventDefault(); $("closeHelp").focus(); } });
+
+  const overlayOpen = () => anyOpen() || ["clModal","slipModal","helpModal","setupModal"].some(id => !$(id).hidden) || !$("notifPanel").hidden || !$("rowMenu").hidden;
+  document.addEventListener("keydown", e => {
+    // Ctrl/⌘ + Enter saves the open form
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !e.altKey){
+      const f = e.target.closest && e.target.closest("form"); if (f && !f.closest("[hidden]") ){ e.preventDefault(); f.requestSubmit(); }
+      return;
+    }
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const tg = e.target, typing = tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName));
+    if (typing || overlayOpen()) return;
+    const k = e.key;
+    if (k === "?"){ e.preventDefault(); openHelp(); return; }
+    if (k === ","){ e.preventDefault(); location.hash = "#settings"; return; }
+    if (/^[1-4]$/.test(k)){ e.preventDefault(); location.hash = "#" + ["registre","inventaire","calendrier","stats"][Number(k) - 1]; return; }
+    if (k === "/"){
+      const box = view === "registre" ? $("q") : view === "inventaire" ? $("iq") : null;
+      if (box){ e.preventDefault(); box.focus(); box.select(); }
+      return;
+    }
+    if (k === "n" || k === "N"){
+      const btn = view === "registre" ? $("newBtn") : view === "inventaire" ? $("newEqBtn") : view === "calendrier" ? $("newResBtn") : null;
+      if (btn){ e.preventDefault(); btn.click(); }
+      return;
+    }
+    if (view === "calendrier"){
+      if (k === "ArrowLeft"){ e.preventDefault(); $("calPrev").click(); }
+      else if (k === "ArrowRight"){ e.preventDefault(); $("calNext").click(); }
+      else if (k === "t" || k === "T"){ e.preventDefault(); $("calToday").click(); }
+    }
+  });
   function startRefresh(){
     clearInterval(refreshTimer);
     refreshTimer = setInterval(() => { if (!anyOpen() && document.visibilityState === "visible") load(); }, ((settings && settings.refreshSeconds) || 30) * 1000);
+  }
+
+  // ---------- settings page: section rail, back-to-top ----------
+  const SEC_IDS = ["set-general","set-archive","set-a11y","set-loans","set-lists","set-slip","intCard","set-data"];
+  const smooth = () => (document.documentElement.dataset.motion === "reduce" || (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)) ? "auto" : "smooth";
+  let railCur = -1, railTick = false, railBound = false;
+  function buildRail(){
+    $("railList").innerHTML = SEC_IDS.map(id => {
+      const label = t($(id).dataset.sec);
+      return `<li><button type="button" data-target="${id}" aria-label="${esc(label)}"><span class="rail-dot"></span><span class="rail-label">${esc(label)}</span></button></li>`;
+    }).join("");
+    railCur = -1;
+  }
+  function updateRail(){
+    if (view !== "settings") return;
+    const y = window.scrollY, max = Math.max(1, document.documentElement.scrollHeight - innerHeight), pivot = innerHeight * 0.32;
+    let cur = 0;
+    SEC_IDS.forEach((id, i) => { if ($(id).getBoundingClientRect().top <= pivot) cur = i; });
+    if (max - y < 6) cur = SEC_IDS.length - 1;
+    $("railFill").style.transform = `scaleY(${Math.min(1, y / max).toFixed(4)})`;
+    $("toTop").classList.toggle("show", y > 480); $("toTop").hidden = false;
+    if (cur === railCur) return;
+    railCur = cur;
+    const btns = [...$("railList").querySelectorAll("button")];
+    btns.forEach((b, i) => { if (i === cur) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current"); });
+    const b = btns[cur];
+    if (b) $("railThumb").style.transform = `translateY(${b.parentElement.offsetTop + b.parentElement.offsetHeight / 2}px)`;
+    const sec = $("crumbSec"), label = t($(SEC_IDS[cur]).dataset.sec);
+    if (sec.textContent !== label){ sec.textContent = label; if (sec.animate && smooth() === "smooth") sec.animate([{transform:"translateY(10px)",opacity:0},{transform:"none",opacity:1}], {duration:280, easing:"cubic-bezier(.2,.9,.3,1)"}); }
+  }
+  function settingsNavOn(){
+    buildRail(); $("rail").hidden = false; $("toTop").hidden = false;
+    if (!railBound){
+      railBound = true;
+      window.addEventListener("scroll", () => { if (railTick || view !== "settings") return; railTick = true; requestAnimationFrame(() => { railTick = false; updateRail(); }); }, {passive:true});
+      window.addEventListener("resize", () => { railCur = -1; updateRail(); });
+      $("railList").addEventListener("click", e => {
+        const b = e.target.closest("button[data-target]"); if (!b) return;
+        const sec = $(b.dataset.target); sec.scrollIntoView({behavior: smooth(), block: "start"});
+        const h = sec.querySelector("h2"); if (h){ h.tabIndex = -1; h.focus({preventScroll:true}); }
+      });
+      $("toTop").addEventListener("click", () => { window.scrollTo({top:0, behavior: smooth()}); $("backBtn").focus({preventScroll:true}); });
+    }
+    requestAnimationFrame(updateRail);
+  }
+  function settingsNavOff(){ $("rail").hidden = true; $("toTop").hidden = true; $("toTop").classList.remove("show"); }
+
+  // ---------- archive ----------
+  const ARC_OPTS = [3, 6, 12, 24, 36, 60];
+  function fillArchiveOptions(){
+    const sel = $("s_archiveMonths"), keep = sel.value || String((settings && settings.archiveMonths) || 12);
+    const vals = ARC_OPTS.includes(Number(keep)) ? ARC_OPTS : [...ARC_OPTS, Number(keep)].sort((a,b) => a-b);
+    sel.innerHTML = vals.map(n => `<option value="${n}">${esc(n % 12 === 0 ? t(n === 12 ? "arcYear1" : "arcYearsN", {n: n/12}) : t("arcMonthsN", {n}))}</option>`).join("");
+    sel.value = keep;
+  }
+  let arcN = 0;
+  async function refreshArchiveCount(){
+    try{ arcN = (await api("GET", "/api/archive?count=1")).count; }catch(_){ return; }
+    $("arcCount").textContent = arcN ? `(${arcN})` : "";
+    $("arcView").disabled = !arcN; $("arcEmpty").disabled = !arcN;
+    $("arcDl").setAttribute("aria-disabled", arcN ? "false" : "true"); $("arcDl").classList.toggle("disabled", !arcN);
+    $("arcStatus").textContent = arcN ? t("arcStatus", {n: arcN}) : t("arcStatusNone");
+  }
+  $("arcDl").addEventListener("click", e => { if (!arcN) e.preventDefault(); });
+  let arcLoans = [];
+  async function openArchive(){
+    try{ const r = await api("GET", "/api/archive"); arcLoans = r.loans; }catch(ex){ toast(ex.message); return; }
+    renderArchive(); $("arcModal").hidden = false; setTimeout(() => $("arcAll").focus(), 40);
+  }
+  function renderArchive(){
+    $("arcModalSub").textContent = t("arcModalSub", {n: arcLoans.length});
+    $("arcRows").innerHTML = arcLoans.map(l => `<tr>
+      <td><input type="checkbox" data-id="${l.id}" aria-label="${esc(t("arcSelectOne", {no: l.slipNo}))}"></td>
+      <td><span class="tag">${esc(l.slipNo)}</span></td>
+      <td>${esc(l.borrower)}<div class="sub">${esc(l.department)}</div></td>
+      <td>${l.items.map(i => `<div>${esc(i.item)} <span class="serial">${esc(i.serial)}</span></div>`).join("")}</td>
+      <td class="mono">${fmt(l.loanDate)}</td><td class="mono">${fmt(l.returnDate)}</td></tr>`).join("");
+    $("arcEmptyNote").hidden = arcLoans.length > 0; $("arcAll").checked = false; $("arcAll").disabled = !arcLoans.length; arcSelUpdate();
+  }
+  const arcChecked = () => [...$("arcRows").querySelectorAll('input[type="checkbox"]:checked')].map(c => Number(c.dataset.id));
+  function arcSelUpdate(){
+    const n = arcChecked().length, all = $("arcRows").querySelectorAll('input[type="checkbox"]').length;
+    $("arcSel").textContent = n ? t("arcSel", {n}) : ""; $("arcDelSel").disabled = !n;
+    $("arcAll").checked = all > 0 && n === all; $("arcAll").indeterminate = n > 0 && n < all;
+  }
+  $("arcRows").addEventListener("change", arcSelUpdate);
+  $("arcAll").addEventListener("change", e => { $("arcRows").querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = e.target.checked); arcSelUpdate(); });
+  $("arcView").addEventListener("click", openArchive);
+  $("closeArc").addEventListener("click", () => { $("arcModal").hidden = true; });
+  $("arcDelSel").addEventListener("click", () => {
+    const ids = arcChecked(); if (!ids.length) return;
+    confirmBox({ title: t("arcDelTitle"), text: t("arcDelText", {n: ids.length}), yes: t("delete"), danger: true, onYes: async () => {
+      try{ const r = await api("POST", "/api/archive/delete", {ids}); toast(t("arcDeleted", {n: r.deleted})); await openArchive(); refreshArchiveCount(); }
+      catch(ex){ toast(ex.message); }
+    }});
+  });
+  $("arcEmpty").addEventListener("click", () => {
+    confirmBox({ title: t("arcEmptyTitle"), text: t("arcEmptyText", {n: arcN}), yes: t("arcEmptyYes"), danger: true, onYes: async () => {
+      try{ const r = await api("POST", "/api/archive/delete", {all: true}); toast(t("arcDeleted", {n: r.deleted})); $("arcModal").hidden = true; refreshArchiveCount(); }
+      catch(ex){ toast(ex.message); }
+    }});
+  });
+
+  // ---------- restore from a backup ----------
+  $("restoreBtn").addEventListener("click", () => $("restoreFile").click());
+  $("restoreFile").addEventListener("change", e => {
+    const f = e.target.files && e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    confirmBox({ title: t("restoreTitle"), text: t("restoreText", {name: f.name}), yes: t("restoreYes"), danger: true, onYes: async () => {
+      const msg = $("restoreMsg"); msg.classList.remove("err"); msg.textContent = t("restoring");
+      try{
+        const r = await fetch("/api/restore", {method: "POST", headers: {"Content-Type": "application/octet-stream"}, body: f});
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        msg.textContent = t("restored"); toast(t("restored")); setTimeout(() => location.reload(), 1200);
+      }catch(ex){ msg.classList.add("err"); msg.textContent = t("restoreFail", {msg: ex.message}); }
+    }});
+  });
+
+  // ---------- accessibility: focus goes into an opened dialog, stays there and returns afterwards ----------
+  (function(){
+    const dlgs = [...document.querySelectorAll(".scrim, .modal, .help, .setup")];
+    const stack = [];
+    const FOC = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const shown = el => !!(el.offsetWidth || el.offsetHeight || el.getClientRects().length);
+    const focusables = root => [...root.querySelectorAll(FOC)].filter(shown);
+    const setInert = on => { for (const sel of [".wrap", "#rail"]){ const el = document.querySelector(sel); if (el) el.inert = on; } };
+    const mo = new MutationObserver(muts => {
+      for (const m of muts){
+        const el = m.target, at = stack.findIndex(x => x.el === el);
+        if (!el.hidden && at < 0){
+          stack.push({el, from: document.activeElement}); setInert(true);
+          setTimeout(() => { if (!el.hidden && !el.contains(document.activeElement)){ const f = focusables(el)[0]; if (f) f.focus(); } }, 70);
+        } else if (el.hidden && at >= 0){
+          const {from} = stack.splice(at, 1)[0]; if (!stack.length) setInert(false);
+          if (from && from.isConnected && shown(from)) try{ from.focus(); }catch(_){}
+        }
+      }
+    });
+    dlgs.forEach(el => mo.observe(el, {attributes: true, attributeFilter: ["hidden"]}));
+    document.addEventListener("keydown", e => {
+      if (e.key !== "Tab" || e.defaultPrevented || !stack.length) return;
+      const top = stack[stack.length - 1].el, f = focusables(top);
+      if (!f.length) return;
+      if (!top.contains(document.activeElement)){ e.preventDefault(); f[0].focus(); }
+      else if (e.shiftKey && document.activeElement === f[0]){ e.preventDefault(); f[f.length - 1].focus(); }
+      else if (!e.shiftKey && document.activeElement === f[f.length - 1]){ e.preventDefault(); f[0].focus(); }
+    });
+  })();
+
+  // ---------- first-run setup ----------
+  const SETUP_STEPS = 4;
+  const SETUP_SW = {auto:["#f3f5f4","#121715"], light:["#f3f5f4","#1f4fbf"], dark:["#121715","#7ea2ff"], indigo:["#07080c","#6e6be5"], ocean:["#05102a","#00a6ff"], forest:["#f1eee1","#1f5a3d"], sunset:["#fff3e8","#c2410c"], mocha:["#14100d","#d9a066"], nord:["#242933","#88c0d0"], graphite:["#0f0f10","#a3e635"], rose:["#fdf2f5","#be185d"], mint:["#ecf8f3","#0f766e"]};
+  let suStep = 0, suTheme = "auto", suBusy = false;
+  function suSwatches(){
+    $("setupThemes").innerHTML = THEME_IDS.map(id => {
+      const [a,b] = SETUP_SW[id];
+      const bg = id === "auto" ? `linear-gradient(110deg,${a} 50%,${b} 50%)` : `linear-gradient(110deg,${a} 58%,${b} 58%)`;
+      return `<button type="button" class="susw" data-theme-id="${id}" aria-pressed="${id===suTheme}"><span class="chip2" style="background:${bg}"></span>${esc(t("theme_"+id))}</button>`;
+    }).join("");
+  }
+  // Step 3 scene: the badge follows the form
+  function suBadge(){
+    const name = $("su_orgName").value.trim() || "Tally";
+    const pre = ($("su_slipPrefix").value.trim() || "PR").toUpperCase().replace(/[^A-Z0-9]/g,"") || "PR";
+    const days = Math.max(1, Math.min(365, Math.round(Number($("su_days").value)) || 14));
+    $("suBdName").textContent = name;
+    $("suBdMark").textContent = (name.match(/[\p{L}\p{N}]/u) || ["T"])[0].toUpperCase();
+    $("suBdPrefix").textContent = pre + "-0001";
+    $("suBdDays").textContent = days;
+    document.querySelector("#suBadge .bd-ring .fg").style.strokeDashoffset = String(100 - Math.max(8, Math.min(100, days / 90 * 100)));
+  }
+  const SU_PULSE = {su_orgName:"suBdName", su_slipPrefix:"suBdPrefix", su_days:"suBdDays"};
+  ["su_orgName","su_slipPrefix","su_days"].forEach(id => $(id).addEventListener("input", () => {
+    suBadge();
+    const el = $(SU_PULSE[id]); if (el && el.animate) el.animate([{transform:"scale(1.12)"},{transform:"scale(1)"}], {duration:260, easing:"ease-out"});
+    const m = $("suBdMark"); if (id === "su_orgName" && m.animate) m.animate([{transform:"scale(.8) rotate(-8deg)"},{transform:"scale(1) rotate(0)"}], {duration:300, easing:"cubic-bezier(.3,1.6,.5,1)"});
+  }));
+  // Step 2 scene: a small flourish whenever a theme is picked
+  function suMockSwap(){ const m = $("suMock"); if (m.animate) m.animate([{transform:"scale(.94)"},{transform:"scale(1)"}], {duration:380, easing:"cubic-bezier(.3,1.6,.5,1)"}); }
+  function suRender(dir){
+    const m = $("setupModal");
+    suBadge();
+    m.dataset.step = suStep; m.dataset.dir = dir || "next";
+    m.querySelectorAll(".setup-pane").forEach(p => { p.hidden = Number(p.dataset.step) !== suStep; });
+    $("setupDots").querySelectorAll("i").forEach((d,i) => { d.classList.toggle("on", i <= suStep); d.classList.toggle("cur", i === suStep); });
+    $("setupCount").textContent = t("setupStep", {n: suStep+1, total: SETUP_STEPS});
+    $("suBack").hidden = suStep === 0;
+    $("suSkip").hidden = suStep === SETUP_STEPS-1;
+    $("suNext").textContent = t(suStep === SETUP_STEPS-1 ? "setupFinish" : "setupNext");
+    m.querySelectorAll("#setupLang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === lang ? "true" : "false"));
+    $("setupErr").hidden = true;
+  }
+  function openSetup(){
+    suStep = 0; suTheme = (settings && settings.theme) || "auto";
+    $("su_orgName").value = (settings && settings.orgName) || "";
+    $("su_slipPrefix").value = (settings && settings.slipPrefix) || "PR";
+    $("su_days").value = (settings && settings.defaultLoanDays) || 14;
+    suSwatches(); suRender();
+    $("setupModal").hidden = false;
+    setTimeout(() => { const b = document.querySelector("#setupLang button[aria-pressed=true]"); if (b) b.focus(); }, 60);
+  }
+  async function suSave(final){
+    const body = { defaultLang: lang, theme: suTheme, setupDone: !!final };
+    if (suStep >= 2 || final){
+      body.orgName = $("su_orgName").value.trim();
+      body.slipPrefix = $("su_slipPrefix").value.trim() || "PR";
+      body.defaultLoanDays = Math.max(1, Math.min(365, Math.round(Number($("su_days").value)) || 14));
+    }
+    settings = await api("PUT", "/api/settings", body);
+    applyTheme(settings.theme);
+    lang = settings.defaultLang === "fr" ? "fr" : "en";
+    applyI18n(); try{ $("ldText").textContent = t("loading"); }catch(_){} fillDateFormatOptions(); fillSettingsForm(); syncDateFields(); renderAll(); renderPicklists(); renderLogoSetting();
+  }
+  function closeSetup(){ $("setupModal").hidden = true; }
+  async function suNext(){
+    if (suBusy) return; suBusy = true;
+    try{
+      if (suStep === 2){ await suSave(false); }
+      if (suStep === SETUP_STEPS-1){ await suSave(true); closeSetup(); return; }
+      suStep++; suRender("next");
+    }catch(ex){ $("setupErr").textContent = ex.message || t("setupSaveErr"); $("setupErr").hidden = false; }
+    finally{ suBusy = false; }
+  }
+  $("suNext").addEventListener("click", suNext);
+  $("suBack").addEventListener("click", () => { if (suStep > 0){ suStep--; suRender("back"); } });
+  $("suSkip").addEventListener("click", async () => {
+    if (suBusy) return; suBusy = true;
+    try{ await suSave(true); closeSetup(); }
+    catch(ex){ $("setupErr").textContent = ex.message || t("setupSaveErr"); $("setupErr").hidden = false; }
+    finally{ suBusy = false; }
+  });
+  $("setupLang").addEventListener("click", e => {
+    const b = e.target.closest("button[data-lang]"); if (!b) return;
+    lang = b.dataset.lang; applyI18n(); suSwatches(); suRender("keep");
+  });
+  $("setupThemes").addEventListener("click", e => {
+    const b = e.target.closest(".susw"); if (!b) return;
+    suTheme = b.dataset.themeId; applyTheme(suTheme); suMockSwap();
+    $("setupThemes").querySelectorAll(".susw").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+  });
+  $("setupModal").addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.target.tagName === "INPUT"){ e.preventDefault(); suNext(); }
+    if (e.key === "Tab"){ // keep focus inside the card
+      const f = [...$("setupModal").querySelectorAll("button,input")].filter(x => !x.hidden && x.offsetParent !== null);
+      if (!f.length) return;
+      const first = f[0], last = f[f.length-1];
+      if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    }
+  });
+  $("suImport").addEventListener("click", async () => { try{ await suSave(true); }catch(_){} closeSetup(); location.hash = "#settings"; setTimeout(() => { const b = $("importBtn"); if (b){ b.scrollIntoView({block:"center"}); b.focus(); } }, 150); });
+  $("suKeys").addEventListener("click", async () => { try{ await suSave(true); }catch(_){} closeSetup(); openHelp(); });
+
+  // ---------- accessibility settings (per browser) ----------
+  const A11Y = (() => { try{ return JSON.parse(store.get("tally.a11y") || "{}") || {}; }catch(_){ return {}; } })();
+  function applyA11y(){
+    const r = document.documentElement;
+    A11Y.text ? r.dataset.text = A11Y.text : delete r.dataset.text;
+    A11Y.contrast ? r.dataset.contrast = "high" : delete r.dataset.contrast;
+    A11Y.motion ? r.dataset.motion = "reduce" : delete r.dataset.motion;
+    A11Y.focus ? r.dataset.focus = "strong" : delete r.dataset.focus;
+  }
+  applyA11y();
+  function initA11y(){
+    $("a11yText").value = A11Y.text || ""; $("a11yContrast").checked = !!A11Y.contrast; $("a11yMotion").checked = !!A11Y.motion; $("a11yFocus").checked = !!A11Y.focus;
+    const save = () => { A11Y.text = $("a11yText").value; A11Y.contrast = $("a11yContrast").checked; A11Y.motion = $("a11yMotion").checked; A11Y.focus = $("a11yFocus").checked; store.set("tally.a11y", JSON.stringify(A11Y)); applyA11y(); };
+    ["a11yText","a11yContrast","a11yMotion","a11yFocus"].forEach(id => $(id).addEventListener("change", save));
+  }
+  initA11y(); setTimeout(() => { try{ hideLoader(); }catch(_){} }, 8000);
+  function hideLoader(){
+    const l = $("loader"); if (!l) return;
+    l.classList.add("done"); setTimeout(() => l.remove(), 450);
   }
 
   // ---------- démarrage ----------
@@ -1405,7 +1891,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
   }
   (async () => {
     try{ settings = await api("GET", "/api/settings"); }
-    catch(_){ settings = {orgName:"",serviceName:"",publicUrl:"",defaultLang:"en",dateFormat:"DD/MM/YYYY",slipPrefix:"PR",defaultLoanDays:14,dueSoonDays:3,refreshSeconds:30,requireIssuedBy:false,sites:[],departments:[],categories:[],terms:"",theme:"auto"}; }
+    catch(_){ settings = {orgName:"",serviceName:"",publicUrl:"",defaultLang:"en",dateFormat:"DD/MM/YYYY",slipPrefix:"PR",defaultLoanDays:14,dueSoonDays:3,refreshSeconds:30,requireIssuedBy:false,sites:[],departments:[],categories:[],terms:"",theme:"auto",setupDone:true}; }
     lang = settings.defaultLang === "fr" ? "fr" : "en";
     applyTheme(settings.theme);
     applyI18n(); fillDateFormatOptions(); syncDateFields(); checkUpdated();
@@ -1414,5 +1900,7 @@ ${loanQr ? `<div>${loanQr}<div class="scan">${esc(ts("scanLoan"))}</div></div>` 
     await load();
     route();
     startRefresh();
+    if (settings && settings.setupDone === false) openSetup();
+    setTimeout(hideLoader, 250);
   })();
 })();
