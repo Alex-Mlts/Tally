@@ -12,6 +12,12 @@ Versions are MAJOR.MINOR.PATCH, counted one step at a time with no skipped numbe
 
 To add a release: put a new ## version — Tag block at the top (tag is Patch, Minor or Major), group bullets under ### Added, ### Improved or ### Fixed, and bump version in package.json and APP_VERSION in public/app.js.
 
+## 1.9.1 — Patch
+
+### Fixed
+- The screen loader was replaced with a new, calmer one: a row of bars that rise and fall like a wave. It now covers the whole screen and fades out cleanly, and it stays up just long enough to be seen
+- The first animation of the first-run setup now plays in full: the loan slip slides out of the printer and fills in one line at a time. It was being cut short (the slip appeared at once), and it now starts only once the screen loader is gone
+
 ## 1.9.0 — Minor
 
 ### Added
@@ -21,7 +27,7 @@ To add a release: put a new ## version — Tag block at the top (tag is Patch, M
 - Settings navigation: inside Settings the main tabs give way to a Back button (to the Register), a side rail that shows which section you are in as you scroll, and a back-to-top button
 - SECURITY.md and CONTRIBUTING.md for the public repository
 - An Accessibility section in Settings: text size, higher contrast, reduce motion and a stronger focus outline (saved per browser)
-- A screen loader (five tally marks drawn one by one and struck through) shown while the app loads
+- A screen loader shown while the app loads
 
 ### Improved
 - The loan slip says Lender instead of IT department, Handed over by is left blank for you to fill in, and the two signature lines now line up when printed

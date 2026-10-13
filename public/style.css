@@ -508,7 +508,7 @@ th[aria-sort="descending"] .sortbtn svg .d{opacity:1}
 /* First-run setup: the loan slip printing in the hero */
 .setup-hero .slot{position:absolute;left:50%;top:12px;translate:-50% 0;width:220px;height:9px;border-radius:99px;background:rgba(12,8,24,.78);box-shadow:0 2px 6px rgba(0,0,0,.35);z-index:3}
 .slipwrap{position:absolute;left:50%;top:17px;translate:-50% 0;width:200px;height:140px;overflow:hidden;z-index:2}
-.slip{position:relative;margin:0 auto;width:186px;background:#fffdfa;color:#2a2438;border-radius:0 0 8px 8px;padding:10px 12px 12px;box-shadow:0 10px 24px rgba(10,0,30,.35);font-size:10.5px;animation:slipOut .9s cubic-bezier(.25,.8,.3,1) .15s both;transform-origin:50% 0}
+.slip{position:relative;margin:0 auto;width:186px;background:#fffdfa;color:#2a2438;border-radius:0 0 8px 8px;padding:10px 12px 12px;box-shadow:0 10px 24px rgba(10,0,30,.35);font-size:10.5px;animation:slipOut .9s cubic-bezier(.25,.8,.3,1) .6s both;transform-origin:50% 0}
 .sl-head{display:flex;align-items:center;gap:6px;padding-bottom:7px;margin-bottom:7px;border-bottom:1px dashed #cfc8dd;white-space:nowrap}
 .sl-logo{width:12px;height:12px;border-radius:3px;background:var(--accent,#6e6be5);flex:none;transition:background .4s}
 .sl-head b{font-size:10.5px;max-width:84px;overflow:hidden;text-overflow:ellipsis}
@@ -516,8 +516,8 @@ th[aria-sort="descending"] .sortbtn svg .d{opacity:1}
 .sl-row{display:flex;gap:8px;align-items:baseline;margin-top:5px}
 .sl-row em{font-style:normal;font-size:8.5px;letter-spacing:.06em;text-transform:uppercase;color:#6b6479;width:62px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sl-val{font-weight:600;white-space:nowrap;overflow:hidden;clip-path:inset(0 100% 0 0);animation:slipWrite .6s steps(14) both}
-.sl-row.r1 .sl-val{animation-delay:1s}.sl-row.r2 .sl-val{animation-delay:1.5s}.sl-row.r3 .sl-val{animation-delay:2s}
-.setup[data-step="3"] @keyframes slipOut{from{transform:translateY(-105%)}}
+.sl-row.r1 .sl-val{animation-delay:1.5s}.sl-row.r2 .sl-val{animation-delay:2s}.sl-row.r3 .sl-val{animation-delay:2.5s}
+@keyframes slipOut{from{transform:translateY(-105%)}}
 @keyframes slipWrite{to{clip-path:inset(0 0 0 0)}}
 @media (max-width:420px){.slipwrap{height:110px}}
 
@@ -622,20 +622,15 @@ th[aria-sort="descending"] .sortbtn svg .d{opacity:1}
 
 :root[data-tone="dark"] .calbar.late{color:#1a0605}
 
-/* ---- screen loader: five tally marks drawn one by one, then struck through ---- */
+/* ---- screen loader: a row of bars rising and falling like a wave ---- */
 .loader{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;background:var(--bg);transition:opacity .4s ease,visibility .4s}
-.loader.done{opacity:0;visibility:hidden;pointer-events:none}
-.ld-box{display:grid;justify-items:center;gap:14px}
-.ld-marks{width:132px;height:auto;overflow:visible}
-.ld-marks .m{fill:none;stroke:var(--fg);stroke-width:7;stroke-linecap:round;stroke-dasharray:60;stroke-dashoffset:60;animation:ldDraw 2.2s cubic-bezier(.5,.1,.2,1) infinite}
-.ld-marks .m5{stroke:var(--accent);stroke-dasharray:110;stroke-dashoffset:110}
-.ld-marks .m1{animation-delay:0s}.ld-marks .m2{animation-delay:.18s}.ld-marks .m3{animation-delay:.36s}.ld-marks .m4{animation-delay:.54s}.ld-marks .m5{animation-name:ldStrike;animation-delay:.8s}
-.ld-word{font:700 22px/1 var(--f-display);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);animation:ldPulse 2.2s ease-in-out infinite}
-@keyframes ldDraw{0%{stroke-dashoffset:60;opacity:1}22%,78%{stroke-dashoffset:0;opacity:1}92%,100%{stroke-dashoffset:0;opacity:0}}
-@keyframes ldStrike{0%,8%{stroke-dashoffset:110;opacity:1}40%,78%{stroke-dashoffset:0;opacity:1}92%,100%{stroke-dashoffset:0;opacity:0}}
-@keyframes ldPulse{50%{opacity:.45}}
-html[data-motion="reduce"] .ld-marks .m,html[data-motion="reduce"] .ld-word{animation:none;stroke-dashoffset:0}
-@media (prefers-reduced-motion:reduce){.ld-marks .m,.ld-word{animation:none;stroke-dashoffset:0}}
+.loader.ld-off{opacity:0;visibility:hidden;pointer-events:none}
+.ld-bars{display:flex;align-items:center;gap:7px;height:56px}
+.ld-bars i{display:block;width:8px;height:56px;border-radius:99px;background:var(--accent);transform:scaleY(.25);transform-origin:center;box-shadow:0 0 14px color-mix(in srgb,var(--accent) 55%,transparent);animation:ldWave 1.1s ease-in-out infinite}
+.ld-bars i:nth-child(2){animation-delay:.12s}.ld-bars i:nth-child(3){animation-delay:.24s}.ld-bars i:nth-child(4){animation-delay:.36s}.ld-bars i:nth-child(5){animation-delay:.48s}
+@keyframes ldWave{0%,100%{transform:scaleY(.25);opacity:.55}50%{transform:scaleY(1);opacity:1}}
+html[data-motion="reduce"] .ld-bars i{animation:none;transform:scaleY(.6)}
+@media (prefers-reduced-motion:reduce){.ld-bars i{animation:ldFade 1.6s ease-in-out infinite;transform:scaleY(.6)}@keyframes ldFade{50%{opacity:.35}}}
 
 /* ---- accessibility settings ---- */
 html[data-text="lg"] body{zoom:1.12}

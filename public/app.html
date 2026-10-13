@@ -36,7 +36,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="loader" id="loader" role="status" aria-live="polite"><div class="ld-box"><svg class="ld-marks" viewBox="0 0 120 80" aria-hidden="true"><path class="m m1" d="M18 12v56"/><path class="m m2" d="M42 12v56"/><path class="m m3" d="M66 12v56"/><path class="m m4" d="M90 12v56"/><path class="m m5" d="M6 58L104 22"/></svg><div class="ld-word">Tally</div><span class="sr-only" id="ldText">Loading…</span></div></div>
+<div class="loader" id="loader" role="status" aria-live="polite"><div class="ld-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><span class="sr-only" id="ldText">Loading…</span></div>
 <a class="skip" id="skipLink" href="#view-registre" data-i18n="skip">Skip to content</a>
 <div class="wrap">
   <header class="top">
@@ -677,9 +677,9 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         <div class="slipwrap">
           <div class="slip">
             <div class="sl-head"><i class="sl-logo"></i><b>Tally</b><span>PR-0001</span></div>
-            <div class="sl-row"><em data-i18n="thItem">Items</em><span class="sl-val" data-i18n="setupSlipItem">Something</span></div>
-            <div class="sl-row"><em data-i18n="thBorrower">Borrower</em><span class="sl-val" data-i18n="setupSlipWho">Someone</span></div>
-            <div class="sl-row"><em data-i18n="thDue">Due</em><span class="sl-val" data-i18n="setupSlipDue">Tomorrow</span></div>
+            <div class="sl-row r1"><em data-i18n="thItem">Items</em><span class="sl-val" data-i18n="setupSlipItem">Something</span></div>
+            <div class="sl-row r2"><em data-i18n="thBorrower">Borrower</em><span class="sl-val" data-i18n="setupSlipWho">Someone</span></div>
+            <div class="sl-row r3"><em data-i18n="thDue">Due</em><span class="sl-val" data-i18n="setupSlipDue">Tomorrow</span></div>
           </div>
         </div>
       </div>

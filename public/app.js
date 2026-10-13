@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "1.9.0";
+  const APP_VERSION = "1.9.1";
   const $ = id => document.getElementById(id);
   const store = { get(k){ try{ return localStorage.getItem(k) || ""; }catch(_){ return ""; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(_){} } };
 
@@ -1876,7 +1876,7 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
   initA11y(); setTimeout(() => { try{ hideLoader(); }catch(_){} }, 8000);
   function hideLoader(){
     const l = $("loader"); if (!l) return;
-    l.classList.add("done"); setTimeout(() => l.remove(), 450);
+    l.classList.add("ld-off"); setTimeout(() => l.remove(), 450);
   }
 
   // ---------- démarrage ----------
@@ -1900,7 +1900,10 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
     await load();
     route();
     startRefresh();
-    if (settings && settings.setupDone === false) openSetup();
-    setTimeout(hideLoader, 250);
+    // keep the loader up long enough to read as a loader, then reveal the app; the setup card opens only once it is gone so its animation plays in full
+    setTimeout(() => {
+      hideLoader();
+      if (settings && settings.setupDone === false) setTimeout(openSetup, 480);
+    }, Math.max(0, 700 - performance.now()));
   })();
 })();

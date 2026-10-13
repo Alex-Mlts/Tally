@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.9.0" src="https://img.shields.io/badge/version-1.9.0-6e6be5">
+  <img alt="Version 1.9.1" src="https://img.shields.io/badge/version-1.9.1-6e6be5">
   <img alt="Node 22.13+" src="https://img.shields.io/badge/node-%E2%89%A522.13-339933">
   <img alt="Database: SQLite" src="https://img.shields.io/badge/database-SQLite-003b57">
   <img alt="Languages: English and French" src="https://img.shields.io/badge/languages-EN%20%7C%20FR-ec6e67">
