@@ -68,7 +68,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
   <nav class="tabs" id="tabsNav" aria-label="Navigation">
     <a href="#register" data-view="registre" data-i18n="navRegister">Registre</a>
     <a href="#inventory" data-view="inventaire" data-i18n="navInventory">Inventaire</a>
-    <a href="#calendar" data-view="calendrier" data-i18n="navCalendar">Calendrier</a>
+    <a href="#calendar" data-view="calendrier"><span data-i18n="navCalendar">Calendrier</span><span class="tabcount" id="reqBadge" hidden></span></a>
     <a href="#statistics" data-view="stats" data-i18n="navStats">Statistiques</a>
   </nav>
 
@@ -175,6 +175,24 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
     </div>
     <div class="calbox"><div class="cal" id="cal"></div></div>
     <p class="sub legend"><span class="sw loan"></span><span data-i18n="lgLoan">Prêt en cours</span> <span class="sw late"></span><span data-i18n="lgLate">En retard</span> <span class="sw done"></span><span data-i18n="lgDone">Rendu</span> <span class="sw res"></span><span data-i18n="lgRes">Réservation</span> · <span data-i18n="calHelp">Cliquez sur un jour pour réserver à cette date.</span></p>
+
+    <section class="card" id="reqCard">
+      <div class="card-head">
+        <h2 data-i18n="reqTitle">Requests</h2>
+        <div class="chips" role="group" id="reqChips">
+          <button class="chip" type="button" data-q="pending" aria-pressed="true"><span data-i18n="reqWaiting">Waiting</span> <span class="count" id="reqCount"></span></button>
+          <button class="chip" type="button" data-q="all" aria-pressed="false" data-i18n="fAll">Toutes</button>
+        </div>
+        <button class="btn small" type="button" id="reqLinkBtn" data-i18n="reqCopyLink">Copy the request page link</button>
+      </div>
+      <div class="tablebox flat">
+        <table class="restable reqtable">
+          <thead><tr><th scope="col" data-i18n="thReq">Request</th><th scope="col" data-i18n="thWho">Who</th><th scope="col" data-i18n="thItem">Matériel</th><th scope="col" data-i18n="thPeriod">Période</th><th scope="col" data-i18n="thStatus">Statut</th><th scope="col"><span class="sr-only" data-i18n="thActions">Actions</span></th></tr></thead>
+          <tbody id="reqRows"></tbody>
+        </table>
+        <div class="empty" id="reqEmpty" hidden><p id="reqEmptyText"></p></div>
+      </div>
+    </section>
 
     <section class="card">
       <div class="card-head">
@@ -375,6 +393,20 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
         <div class="switchrow">
           <div class="swtext"><span class="swtitle" id="sigLbl" data-i18n="sSignature">Collect signatures on screen</span><small data-i18n="sSignatureHelp"></small></div>
           <label class="switch"><input id="s_signatureOn" type="checkbox" role="switch" aria-labelledby="sigLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+      </section>
+
+      <section class="card" id="set-requests" data-sec="sRequests">
+        <h2 data-i18n="sRequests">Requests</h2>
+        <p class="sub" data-i18n="sRequestsHelp"></p>
+        <div class="switchrow">
+          <div class="swtext"><span class="swtitle" id="reqOnLbl" data-i18n="sRequestsOn">Accept requests from the request page</span><small data-i18n="sRequestsOnHelp"></small></div>
+          <label class="switch"><input id="s_requestsEnabled" type="checkbox" role="switch" aria-labelledby="reqOnLbl"><span class="track" aria-hidden="true"><span class="knob"></span></span></label>
+        </div>
+        <label><span data-i18n="sRequestNote">Message shown before sending</span><textarea id="s_requestNote" rows="2" maxlength="600" data-i18n-ph="sRequestNotePh"></textarea><small data-i18n="sRequestNoteHelp"></small></label>
+        <div class="actions">
+          <a class="btn" id="reqOpen" href="/request" target="_blank" rel="noopener" data-i18n="sReqOpen">Open the request page</a>
+          <button class="btn" type="button" id="reqCopy" data-i18n="reqCopyLink">Copy the request page link</button>
         </div>
       </section>
 
@@ -620,6 +652,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
   <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="resTitle">
     <div class="sheet-head"><h2 id="resTitle"></h2><button class="btn small" type="button" id="closeRes" data-i18n="close">Fermer</button></div>
     <form id="resForm" novalidate>
+      <div class="fromreq" id="resFromReq" hidden></div>
       <fieldset>
         <legend data-i18n="lgResItems">Matériel réservé</legend>
         <input id="resPick" list="resList" data-i18n-ph="resPickPh" autocomplete="off">
@@ -828,6 +861,7 @@ var dk={dark:1,indigo:1,ocean:1,mocha:1,nord:1,graphite:1};r.setAttribute("data-
   <div class="box" role="alertdialog" aria-labelledby="cTitle">
     <h3 id="cTitle"></h3>
     <p id="cText"></p>
+    <label class="cfield" id="cField" hidden><span id="cFieldLbl"></span><textarea id="cInput" rows="3" maxlength="600"></textarea></label>
     <div class="formfoot">
       <button class="btn" type="button" id="cNo" data-i18n="cancel">Annuler</button>
       <button class="btn danger" type="button" id="cYes"></button>

@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = "1.10.0";
+  const APP_VERSION = "1.11.0";
   const $ = id => document.getElementById(id);
   const store = { get(k){ try{ return localStorage.getItem(k) || ""; }catch(_){ return ""; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(_){} } };
 
@@ -23,6 +23,7 @@
   let formItems = [];
   let reservations = [], calMonth = "", calLayers = {loans:true, res:true}, resFilter = "upcoming";
   let resEditingId = null, resItems = [], convertingRes = null;
+  let requests = [], reqFilter = "pending", resFromRequest = null;
   let logoDataUrl = "";
   async function loadLogo(){
     logoDataUrl = "";
@@ -126,7 +127,7 @@
   }
   async function load(){
     try{
-      [loans, equipment, reservations, notesData] = await Promise.all([api("GET","/api/loans"), api("GET","/api/equipment"), api("GET","/api/reservations"), api("GET","/api/notes").catch(() => notesData)]);
+      [loans, equipment, reservations, notesData, requests] = await Promise.all([api("GET","/api/loans"), api("GET","/api/equipment"), api("GET","/api/reservations"), api("GET","/api/notes").catch(() => notesData), api("GET","/api/requests").catch(() => requests)]);
       online = true;
     }catch(_){ online = false; }
     loaded = true;
@@ -187,6 +188,11 @@
     else { settingsNavOff(); if (settings) applyTheme(settings.theme); }
     renderAll();
   }
+  function showRequests(){
+    reqFilter = "pending"; $("reqChips").querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x.dataset.q === "pending" ? "true" : "false"));
+    if (view !== "calendrier") location.hash = "calendar";
+    setTimeout(() => { $("reqCard").scrollIntoView({behavior: "smooth", block: "start"}); }, 80);
+  }
   function focusLoan(slip){
     query = slip; $("q").value = slip; setFilter("all");
     if (view !== "registre") setView("registre"); else renderRegister();
@@ -199,7 +205,8 @@
     if (view === "registre") renderRegister();
     if (view === "inventaire") renderInventory();
     if (view === "stats") renderStats();
-    if (view === "calendrier"){ renderCalendar(); renderResList(); }
+    if (view === "calendrier"){ renderCalendar(); renderReqList(); renderResList(); }
+    reqBadge();
   }
 
   // ---------- registre ----------
@@ -1103,9 +1110,9 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
   let rsT; window.addEventListener("resize", () => { clearTimeout(rsT); rsT = setTimeout(() => { if (view === "stats") renderStats(); }, 150); });
 
   // ---------- paramètres ----------
-  const S_TEXT = ["orgName","serviceName","publicUrl","slipPrefix","terms"];
+  const S_TEXT = ["orgName","serviceName","publicUrl","slipPrefix","terms","requestNote"];
   const S_NUM = ["defaultLoanDays","dueSoonDays","refreshSeconds"];
-  const S_BOOL = ["requireIssuedBy","signatureOn","archiveEnabled"];
+  const S_BOOL = ["requireIssuedBy","signatureOn","archiveEnabled","requestsEnabled"];
   const S_LIST = ["sites","departments","categories"];
   let pick = {sites:[], departments:[], categories:[]};
   function renderPicklists(){
@@ -1320,6 +1327,88 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
   });
   $("newResBtn").addEventListener("click", () => openReservation(null));
 
+
+  // ---------- borrowing requests (sent from /request) ----------
+  const reqUrl = () => ((settings && settings.publicUrl) || location.origin) + "/request";
+  const reqName = r => `${r.firstName} ${r.lastName}`.trim();
+  const reqWhat = r => r.lines.map(l => `${l.qty} × ${l.category || t("reqOther")}`);
+  function reqState(r){
+    if (r.status === "pending") return {key:"soon", label:t("rqPending")};
+    if (r.status === "declined") return {key:"late", label:t("rqDeclined")};
+    if (r.status === "cancelled") return {key:"neutral", label:t("rqCancelled")};
+    const res = reservations.find(x => x.id === r.reservationId);
+    return {key:"back", label: res ? t("rqApprovedNo", {no: res.resNo}) : t("rqApproved")};
+  }
+  function reqBadge(){
+    const n = requests.filter(r => r.status === "pending").length;
+    $("reqBadge").hidden = !n; $("reqBadge").textContent = n > 9 ? "9+" : n;
+    $("reqBadge").setAttribute("aria-label", t("reqBadge", {n}));
+    $("reqCount").textContent = n ? n : "";
+  }
+  function renderReqList(){
+    const list = requests.filter(r => reqFilter === "all" || r.status === "pending");
+    $("reqRows").innerHTML = list.map(r => {
+      const st = reqState(r), pend = r.status === "pending";
+      return `<tr${pend ? ' class="req-new"' : ""}>
+        <td><span class="tag">${esc(r.reqNo)}</span><div class="sub">${esc(fmt(r.createdAt))}</div></td>
+        <td><button type="button" class="link" data-hist-borrower="${esc(reqName(r))}">${esc(reqName(r))}</button><div class="sub"><a href="mailto:${esc(r.email)}">${esc(r.email)}</a>${r.department ? " · " + esc(r.department) : ""}</div></td>
+        <td>${reqWhat(r).map(x => `<div>${esc(x)}</div>`).join("")}${r.other ? `<div class="sub">${esc(r.other)}</div>` : ""}${r.reason ? `<div class="sub req-why">“${esc(r.reason)}”</div>` : ""}</td>
+        <td class="mono">${fmt(r.startDate)} → ${fmt(r.endDate)}${r.site ? `<div class="sub">${esc(r.site)}</div>` : ""}</td>
+        <td><span class="pill ${st.key}">${esc(st.label)}</span>${r.decisionNote ? `<div class="sub">${esc(r.decisionNote)}</div>` : ""}</td>
+        <td><div class="rowacts">${pend ? `
+          <button class="btn small primary" type="button" data-req-act="approve" data-id="${r.id}">${esc(t("reqApprove"))}</button>
+          <button class="btn small" type="button" data-req-act="decline" data-id="${r.id}">${esc(t("reqDecline"))}</button>` : `
+          <button class="btn small" type="button" data-req-act="delete" data-id="${r.id}">${esc(t("delete"))}</button>`}
+        </div></td></tr>`;
+    }).join("");
+    $("reqEmpty").hidden = list.length > 0;
+    $("reqEmptyText").textContent = reqFilter === "all" ? t("reqEmptyAll") : t("reqEmpty");
+  }
+  $("reqChips").addEventListener("click", e => {
+    const c = e.target.closest(".chip"); if (!c) return;
+    reqFilter = c.dataset.q; $("reqChips").querySelectorAll(".chip").forEach(x => x.setAttribute("aria-pressed", x===c?"true":"false")); renderReqList();
+  });
+  async function copyText(txt){
+    try{ if (navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(txt); return true; } }catch(_){}
+    const ta = document.createElement("textarea"); ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+    let ok = false; try{ ok = document.execCommand("copy"); }catch(_){} ta.remove(); return ok;
+  }
+  const copyReqLink = async () => { const ok = await copyText(reqUrl()); toast(ok ? t("reqLinkCopied", {url: reqUrl()}) : reqUrl()); };
+  $("reqLinkBtn").addEventListener("click", copyReqLink);
+  $("reqCopy").addEventListener("click", copyReqLink);
+  $("reqRows").addEventListener("click", e => {
+    const hb = e.target.closest("[data-hist-borrower]"); if (hb){ openBorrowerHistory(hb.dataset.histBorrower); return; }
+    const b = e.target.closest("[data-req-act]"); if (!b) return;
+    const r = requests.find(x => String(x.id) === b.dataset.id); if (!r) return;
+    if (b.dataset.reqAct === "approve") approveRequest(r);
+    if (b.dataset.reqAct === "decline") confirmBox({ title: t("reqDeclineTitle", {no: r.reqNo}), text: t("reqDeclineText", {who: reqName(r)}), yes: t("reqDecline"), danger: true,
+      input: t("reqDeclineWhy"), onYes: async note => {
+        try{ await api("POST", `/api/requests/${r.id}/decline`, {note}); toast(t("reqDeclined", {no: r.reqNo})); await load(); } catch(ex){ toast(ex.message); }
+      }});
+    if (b.dataset.reqAct === "delete") confirmBox({ title: t("reqDelTitle", {no: r.reqNo}), text: t("reqDelText"), yes: t("delete"), danger: true, onYes: async () => {
+      try{ await api("DELETE", `/api/requests/${r.id}`); await load(); } catch(ex){ toast(ex.message); }
+    }});
+  });
+  // Approving opens the reservation form, filled in from the request, with free matching items already picked
+  async function approveRequest(r){
+    openReservation(null, r.startDate);
+    resFromRequest = r.id;
+    $("v_borrower").value = reqName(r); $("v_contact").value = r.email; $("v_purpose").value = r.reason || "";
+    $("v_startDate").value = r.startDate; $("v_endDate").value = r.endDate;
+    if (r.department) $("v_department").innerHTML = listOptions(settings.departments, r.department);
+    if (r.site) $("v_site").innerHTML = listOptions(settings.sites, r.site);
+    $("v_notes").value = [t("reqNoteLine", {no: r.reqNo}), ...reqWhat(r), r.other].filter(Boolean).join("\n");
+    const ban = $("resFromReq");
+    ban.innerHTML = `<strong>${esc(t("reqFrom", {no: r.reqNo, who: reqName(r)}))}</strong><span>${esc([...reqWhat(r), r.other].filter(Boolean).join(" · "))}</span>`;
+    ban.hidden = false;
+    $("resTitle").textContent = t("reqApproveTitle", {no: r.reqNo});
+    $("resSave").textContent = t("reqApproveSave");
+    try{
+      const sug = await api("GET", `/api/requests/${r.id}/suggest`);
+      if (resFromRequest === r.id && !resItems.length){ resItems = sug; renderResItems(); }
+    }catch(_){}
+  }
+
   const resPickLabel = e => `${e.name} — ${e.serial}${e.site ? " · " + e.site : ""}`;
   function refreshResPicker(){
     $("resList").innerHTML = equipment.filter(e => !resItems.some(i => String(i.equipmentId) === String(e.id))).map(e => `<option value="${esc(resPickLabel(e))}">`).join("");
@@ -1344,6 +1433,7 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
     $("resTitle").textContent = r ? t("resEdit",{no:r.resNo}) : t("resNew");
     $("resSave").textContent = r ? t("resSaveEdit") : t("resSaveNew");
     $("resErr").hidden = true; $("resForm").reset();
+    resFromRequest = null; $("resFromReq").hidden = true;
     $("v_department").innerHTML = listOptions(settings.departments, r && r.department);
     $("v_site").innerHTML = listOptions(settings.sites, r && r.site);
     if (r){
@@ -1358,7 +1448,7 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
     renderResItems();
     $("resSheet").hidden = false; setTimeout(() => $("resPick").focus(), 50);
   }
-  const closeRes = () => { $("resSheet").hidden = true; resEditingId = null; };
+  const closeRes = () => { $("resSheet").hidden = true; resEditingId = null; resFromRequest = null; };
   $("closeRes").addEventListener("click", closeRes); $("cancelRes").addEventListener("click", closeRes);
   $("v_startDate").addEventListener("change", () => { if ($("v_endDate").value < $("v_startDate").value) $("v_endDate").value = $("v_startDate").value; });
   $("resForm").addEventListener("submit", async e => {
@@ -1369,11 +1459,13 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
     if (!body.borrower || (settings.departments.length && !body.department) || !body.startDate || !body.endDate) return fail(t("errResRequired"));
     if (body.endDate < body.startDate) return fail(t("errResDates"));
     body.items = resItems.map(i => ({equipmentId: i.equipmentId}));
+    const fromReq = !resEditingId && resFromRequest;
+    if (fromReq) body.requestId = resFromRequest;
     $("resSave").disabled = true;
     try{
       if (body.bookedBy) store.set("issuedBy", body.bookedBy);
       const saved = resEditingId ? await api("PUT", `/api/reservations/${resEditingId}`, body) : await api("POST", "/api/reservations", body);
-      closeRes(); toast(t("tResSaved",{no:saved.resNo})); await load();
+      closeRes(); toast(fromReq ? t("reqApprovedToast",{no:saved.resNo}) : t("tResSaved",{no:saved.resNo})); await load();
     }catch(ex){ fail(ex.message); }
     finally{ $("resSave").disabled = false; }
   });
@@ -1393,13 +1485,14 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
       if (d <= ALERT_DAYS) res.push({r, d});
     }
     const notes = notesData.filter(n => !n.done && n.remindOn && n.remindOn <= today).map(n => ({n, d: daysBetween(today, n.remindOn)}));
-    soon.sort((a,b) => a.d-b.d); late.sort((a,b) => a.d-b.d); res.sort((a,b) => a.d-b.d); notes.sort((a,b) => a.d-b.d);
-    return {soon, late, res, notes};
+    const reqs = requests.filter(q => q.status === "pending").map(q => ({q, d: daysBetween(today, q.startDate)}));
+    soon.sort((a,b) => a.d-b.d); late.sort((a,b) => a.d-b.d); res.sort((a,b) => a.d-b.d); notes.sort((a,b) => a.d-b.d); reqs.sort((a,b) => a.d-b.d);
+    return {soon, late, res, notes, reqs};
   }
-  const alertKey = x => x.n ? `n${x.n.id}:${x.n.remindOn}` : x.r ? `r${x.r.id}:${x.r.startDate}:${x.d<0?"open":"soon"}` : `${x.l.id}:${x.l.dueDate}:${x.d<0?"late":"soon"}`;
+  const alertKey = x => x.q ? `q${x.q.id}` : x.n ? `n${x.n.id}:${x.n.remindOn}` : x.r ? `r${x.r.id}:${x.r.startDate}:${x.d<0?"open":"soon"}` : `${x.l.id}:${x.l.dueDate}:${x.d<0?"late":"soon"}`;
   const seen = () => { try{ return new Set(JSON.parse(store.get("seenAlerts")||"[]")); }catch(_){ return new Set(); } };
   function renderBell(){
-    const {soon, late, res, notes} = alerts(), all = [...soon, ...late, ...res, ...notes], s = seen();
+    const {soon, late, res, notes, reqs} = alerts(), all = [...reqs, ...soon, ...late, ...res, ...notes], s = seen();
     const unseen = all.filter(x => !s.has(alertKey(x))).length;
     $("bellBadge").hidden = unseen === 0; $("bellBadge").textContent = unseen > 9 ? "9+" : unseen;
     const item = x => {
@@ -1411,7 +1504,11 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
         <span class="who">${esc(x.l.borrower)} · ${esc(x.l.department)} · ${fmt(x.l.dueDate)}</span>
         <span class="when"><span class="pill ${x.d<0?"late":"soon"}">${esc(when)}</span></span></button>`;
     };
-    let html = `<div class="notif-group">${esc(t("notifSoon"))}</div>` + (soon.length ? soon.map(item).join("") : `<div class="notif-empty">${esc(t("notifEmpty"))}</div>`);
+    let html = reqs.length ? `<div class="notif-group">${esc(t("notifReqs"))}</div>` + reqs.map(x => `<button type="button" class="notif-item" data-req="${x.q.id}">
+        <span class="what">${esc(reqWhat(x.q).join(", ") || x.q.other.slice(0, 60))} <span class="serial">${esc(x.q.reqNo)}</span></span>
+        <span class="who">${esc(reqName(x.q))}${x.q.department ? " · " + esc(x.q.department) : ""} · ${fmt(x.q.startDate)} → ${fmt(x.q.endDate)}</span>
+        <span class="when"><span class="pill soon">${esc(t("rqPending"))}</span></span></button>`).join("") : "";
+    html += `<div class="notif-group">${esc(t("notifSoon"))}</div>` + (soon.length ? soon.map(item).join("") : `<div class="notif-empty">${esc(t("notifEmpty"))}</div>`);
     if (late.length) html += `<div class="notif-group">${esc(t("notifLate"))}</div>` + late.map(item).join("");
     if (res.length) html += `<div class="notif-group">${esc(t("notifRes"))}</div>` + res.map(x => {
       const when = x.d < 0 ? t("resNotCollected") : x.d === 0 ? t("resStartsToday") : x.d === 1 ? t("whenTomorrow") : t("resStartsIn",{n:x.d});
@@ -1433,12 +1530,13 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
   function toggleNotif(open){
     const p = $("notifPanel"), willOpen = open ?? p.hidden;
     p.hidden = !willOpen; $("bellBtn").setAttribute("aria-expanded", willOpen ? "true" : "false");
-    if (willOpen){ const {soon, late, res, notes} = alerts(); store.set("seenAlerts", JSON.stringify([...soon, ...late, ...res, ...notes].map(alertKey))); $("bellBadge").hidden = true; }
+    if (willOpen){ const {soon, late, res, notes, reqs} = alerts(); store.set("seenAlerts", JSON.stringify([...reqs, ...soon, ...late, ...res, ...notes].map(alertKey))); $("bellBadge").hidden = true; }
   }
   $("bellBtn").addEventListener("click", e => { e.stopPropagation(); toggleNotif(); });
   document.addEventListener("click", e => { if (!$("notifPanel").hidden && !e.target.closest(".bellwrap")) toggleNotif(false); });
   $("notifList").addEventListener("click", e => {
     const b = e.target.closest(".notif-item"); if (!b) return; toggleNotif(false);
+    if (b.dataset.req){ showRequests(); return; }
     if (b.dataset.note){ if (view === "settings") location.hash = "register"; setTimeout(() => { if (window.TallyHelper){ TallyHelper.open(); TallyHelper.showNotes(true); } }, 60); return; }
     if (b.dataset.res){ const r = resById(b.dataset.res); if (r){ if (view !== "calendrier") location.hash = "calendar"; openReservation(r); } }
     else focusLoan(b.dataset.slip);
@@ -1446,13 +1544,15 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
 
   // ---------- confirmation ----------
   let confirmAction = null;
-  function confirmBox({title, text, yes, danger, onYes}){
+  function confirmBox({title, text, yes, danger, onYes, input}){
     $("cTitle").textContent = title; $("cText").textContent = text; $("cYes").textContent = yes;
     $("cYes").className = danger ? "btn danger" : "btn primary";
+    $("cField").hidden = !input; $("cFieldLbl").textContent = input || ""; $("cInput").value = "";
     confirmAction = onYes; $("confirm").hidden = false;
+    if (input) setTimeout(() => $("cInput").focus(), 30);
   }
   $("cNo").addEventListener("click", () => { $("confirm").hidden = true; confirmAction = null; });
-  $("cYes").addEventListener("click", () => { const f = confirmAction; $("confirm").hidden = true; confirmAction = null; if (f) f(); });
+  $("cYes").addEventListener("click", () => { const f = confirmAction, v = $("cInput").value.trim(); $("confirm").hidden = true; confirmAction = null; if (f) f(v); });
 
   // ---------- champs date : saisie au format choisi dans les paramètres ----------
   const dateParts = () => { const f = dateFmt(); return { order: f.match(/DD|MM|YYYY/g), sep: f.replace(/DD|MM|YYYY/g, "")[0] }; };
@@ -1953,7 +2053,7 @@ ${sigs.in ? `<div class="sigs one"><div class="sig"><b>${esc(ts("sigReturn"))}</
     showRegister(f, q){ location.hash = "#register"; setTimeout(() => { query = q || ""; $("q").value = query; setFilter(f || "active"); renderRegister(); }, 60); },
     focusLoan(slip){ location.hash = "#register"; setTimeout(() => focusLoan(slip), 60); },
     goSettings(sec){ location.hash = "#settings"; setTimeout(() => { const s = $(sec); if (s) s.scrollIntoView({behavior: smooth(), block: "start"}); }, 120); },
-    get notes(){ return notesData; },
+    get notes(){ return notesData; }, get requests(){ return requests; }, showRequests,
     setNotes(list){ notesData = list || []; renderBell(); refreshLoanWarnings(); },
     backup(){ const a = document.createElement("a"); a.href = "/api/backup"; a.download = ""; document.body.appendChild(a); a.click(); a.remove(); }
   };

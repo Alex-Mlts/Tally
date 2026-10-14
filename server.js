@@ -146,6 +146,14 @@ const noteCols = db.prepare("PRAGMA table_info(notes)").all().map(c => c.name);
 if (!noteCols.includes("pinned")) db.exec("ALTER TABLE notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
 if (!noteCols.includes("remind_on")) db.exec("ALTER TABLE notes ADD COLUMN remind_on TEXT NOT NULL DEFAULT ''");
 
+// v1.11: borrowing requests sent from the public /request page
+db.exec(`CREATE TABLE IF NOT EXISTS requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, req_no TEXT UNIQUE NOT NULL, token TEXT UNIQUE NOT NULL,
+  first_name TEXT NOT NULL, last_name TEXT NOT NULL, email TEXT NOT NULL, department TEXT NOT NULL DEFAULT '', site TEXT NOT NULL DEFAULT '',
+  start_date TEXT NOT NULL, end_date TEXT NOT NULL, lines TEXT NOT NULL DEFAULT '[]', other TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending', decision_note TEXT NOT NULL DEFAULT '', reservation_id INTEGER, lang TEXT NOT NULL DEFAULT 'en',
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, decided_at TEXT NOT NULL DEFAULT '')`);
+
 // ---------- Migration v1.2 -> v1.3 : un prêt = plusieurs objets, inventaire ----------
 const getMeta = k => (db.prepare("SELECT value FROM meta WHERE key = ?").get(k) || {}).value;
 const setMeta = (k, v) => db.prepare("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, String(v));
@@ -207,6 +215,8 @@ const DEFAULT_SETTINGS = {
   signatureOn: false,
   archiveEnabled: false,
   archiveMonths: 12,
+  requestsEnabled: true,
+  requestNote: "",
 };
 const str = (v, max = 200) => String(v ?? "").trim().slice(0, max);
 
@@ -231,6 +241,8 @@ function sanitizeSettings(input) {
   if ("archiveEnabled" in input) out.archiveEnabled = !!input.archiveEnabled;
   if ("archiveMonths" in input) out.archiveMonths = int(input.archiveMonths, 1, 120, 12);
   if ("terms" in input) out.terms = str(input.terms, 4000);
+  if ("requestsEnabled" in input) out.requestsEnabled = !!input.requestsEnabled;
+  if ("requestNote" in input) out.requestNote = str(input.requestNote, 600);
   return out;
 }
 function getSettings() {
@@ -409,10 +421,15 @@ const nextResNo = year => {
 // ---------- App ----------
 const app = express();
 app.disable("x-powered-by");
+// behind a reverse proxy on the same machine, take the visitor's address from X-Forwarded-For (used by the request page's rate limit)
+app.set("trust proxy", "loopback");
 app.use(express.json({ limit: "3mb" }));
 
+// The request page is the one part of Tally people can open without the login: it only sends requests and shows their status.
+const PUBLIC_PATHS = /^\/(request\/?|request\.html|api\/public\/.*|themes\.css|vendor\/shadergradient\.js|favicon[^/]*|apple-touch-icon\.png|tally-icon\.png|tally-wordmark-(?:light|dark)-sm\.png|api\/logo)$/;
 if (AUTH_USER && AUTH_PASS) {
   app.use((req, res, next) => {
+    if ((req.method === "GET" || req.path.startsWith("/api/public/")) && PUBLIC_PATHS.test(req.path)) return next();
     const [type, b64] = (req.headers.authorization || "").split(" ");
     if (type === "Basic" && b64) {
       const [u, ...p] = Buffer.from(b64, "base64").toString().split(":");
@@ -803,7 +820,13 @@ app.get("/api/reservations", route((req, res) => {
   const items = db.prepare("SELECT * FROM reservation_items ORDER BY id").all().reduce((m, r) => ((m[r.reservation_id] ||= []).push(r), m), {});
   res.json(rows.map(r => resToApi(r, items[r.id] || [])));
 }));
-app.post("/api/reservations", route((req, res) => { res.status(201).json(loadRes(saveReservation(req.body || {}, null))); }));
+app.post("/api/reservations", route((req, res) => {
+  const b = req.body || {}, rq = b.requestId ? db.prepare("SELECT * FROM requests WHERE id = ?").get(b.requestId) : null;
+  if (b.requestId && (!rq || rq.status !== "pending")) throw new HttpError(409, "Cette demande a déjà été traitée.", "This request has already been handled.");
+  const id = saveReservation(b, null);
+  if (rq) db.prepare("UPDATE requests SET status = 'approved', reservation_id = ?, updated_at = ?, decided_at = ? WHERE id = ?").run(id, nowIso(), nowIso(), rq.id);
+  res.status(201).json(loadRes(id));
+}));
 app.put("/api/reservations/:id", route((req, res) => {
   const cur = db.prepare("SELECT * FROM reservations WHERE id = ?").get(req.params.id);
   if (!cur) throw new HttpError(404, "Réservation introuvable.", `Reservation not found.`);
@@ -958,7 +981,136 @@ app.get("/api/backup", (req, res) => {
 });
 
 // Restore: copy every table of an uploaded Tally backup (.db) over the current data. A copy of the current data is kept first.
-const RESTORE_TABLES = ["loans", "loan_items", "loan_events", "loan_signatures", "equipment", "reservations", "reservation_items", "counters", "settings", "meta", "files", "notes"];
+
+// ---------- Borrowing requests ----------
+// Equipment free for the whole of [start, end]: not marked as loaned, not out (or due back before the start), not reserved.
+function freeEquipment(start, end, exceptResId = 0) {
+  const today = localToday();
+  const out = new Map(db.prepare(`SELECT li.equipment_id AS id, MAX(l.due_date) AS due FROM loan_items li JOIN loans l ON l.id = li.loan_id
+    WHERE li.return_date = '' AND li.equipment_id IS NOT NULL GROUP BY li.equipment_id`).all().map(r => [r.id, r.due]));
+  const reserved = new Set(db.prepare(`SELECT DISTINCT ri.equipment_id AS id FROM reservation_items ri JOIN reservations r ON r.id = ri.reservation_id
+    WHERE r.status = 'active' AND r.id != ? AND r.start_date <= ? AND r.end_date >= ? AND ri.equipment_id IS NOT NULL`).all(exceptResId, end, start).map(r => r.id));
+  return db.prepare("SELECT * FROM equipment ORDER BY name COLLATE NOCASE, serial").all().filter(e => {
+    if (e.status === "loaned" || reserved.has(e.id)) return false;
+    const due = out.get(e.id);
+    return !due || (due < start && due >= today);
+  });
+}
+const catKey = c => String(c || "").trim().toLowerCase();
+function requestCatalogue(start, end) {
+  const s = getSettings(), all = db.prepare("SELECT category FROM equipment").all();
+  const names = new Map();
+  for (const c of [...s.categories, ...all.map(r => r.category)]) { const k = catKey(c); if (!names.has(k)) names.set(k, String(c || "").trim()); }
+  const total = {}, free = {};
+  for (const r of all) total[catKey(r.category)] = (total[catKey(r.category)] || 0) + 1;
+  if (start && end) for (const e of freeEquipment(start, end)) free[catKey(e.category)] = (free[catKey(e.category)] || 0) + 1;
+  return [...names.entries()].map(([k, name]) => ({ key: k, name, total: total[k] || 0, free: start && end ? (free[k] || 0) : null }))
+    .sort((a, b) => (a.key === "") - (b.key === "") || a.name.localeCompare(b.name));
+}
+const nextReqNo = year => {
+  const key = `REQ-${year}`;
+  db.prepare("INSERT INTO counters (year, last) VALUES (?, 1) ON CONFLICT(year) DO UPDATE SET last = last + 1").run(key);
+  return `REQ-${year}-${String(db.prepare("SELECT last FROM counters WHERE year = ?").get(key).last).padStart(4, "0")}`;
+};
+const parseLines = j => { try { const a = JSON.parse(j); return Array.isArray(a) ? a : []; } catch (_) { return []; } };
+// What happened after the request: its reservation, then the loan made from it
+function requestTrail(r) {
+  if (!r.reservation_id) return null;
+  const res = db.prepare("SELECT id, res_no, status, start_date, end_date, loan_id FROM reservations WHERE id = ?").get(r.reservation_id);
+  if (!res) return null;
+  const loan = res.loan_id ? db.prepare("SELECT slip_no, loan_date, due_date, return_date FROM loans WHERE id = ?").get(res.loan_id) : null;
+  return { resNo: res.res_no, status: res.status, startDate: res.start_date, endDate: res.end_date,
+    loan: loan ? { slipNo: loan.slip_no, loanDate: loan.loan_date, dueDate: loan.due_date, returnDate: loan.return_date } : null };
+}
+const reqToApi = (r, staff) => ({
+  ...(staff ? { id: r.id, email: r.email, lang: r.lang } : {}),
+  reqNo: r.req_no, firstName: r.first_name, lastName: r.last_name, department: r.department, site: r.site,
+  startDate: r.start_date, endDate: r.end_date, lines: parseLines(r.lines), other: r.other, reason: r.reason,
+  status: r.status, decisionNote: r.decision_note, createdAt: r.created_at, decidedAt: r.decided_at, reservationId: r.reservation_id ?? null, trail: requestTrail(r),
+});
+// A few requests per hour and address, so the open page cannot be used to flood the register
+const reqHits = new Map();
+function rateLimit(req, max, windowMs) {
+  const ip = req.ip || req.socket.remoteAddress || "?", now = Date.now();
+  const list = (reqHits.get(ip) || []).filter(t => now - t < windowMs);
+  if (list.length >= max) throw new HttpError(429, "Trop de demandes depuis cette adresse. Réessayez plus tard.", "Too many requests from this address. Please try again later.");
+  list.push(now); reqHits.set(ip, list);
+  if (reqHits.size > 5000) reqHits.clear();
+}
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const closed = () => new HttpError(403, "Les demandes sont fermées pour le moment.", "Requests are closed at the moment.");
+
+app.get("/api/public/request-info", route((req, res) => {
+  const s = getSettings();
+  res.json({ enabled: s.requestsEnabled, orgName: s.orgName, serviceName: s.serviceName, lang: s.defaultLang, theme: s.theme, dateFormat: s.dateFormat,
+    departments: s.departments, sites: s.sites, terms: s.terms, note: s.requestNote, hasLogo: !!s.logoUpdated, maxDays: 365, today: localToday(), version: VERSION });
+}));
+app.get("/api/public/availability", route((req, res) => {
+  if (!getSettings().requestsEnabled) throw closed();
+  rateLimit({ ip: "avail:" + (req.ip || "") }, 240, 60_000);
+  const { from, to } = req.query;
+  if (from && (!ISO.test(from) || !ISO.test(to || "") || to < from)) throw new HttpError(400, "Dates invalides.", "Invalid dates.");
+  res.json(requestCatalogue(from, to));
+}));
+app.post("/api/public/requests", route((req, res) => {
+  const s = getSettings();
+  if (!s.requestsEnabled) throw closed();
+  const b = req.body || {};
+  if (b.website) return res.status(201).json({ reqNo: "REQ", token: "" });   // honeypot: bots fill every field
+  const v = { first: str(b.firstName, 80), last: str(b.lastName, 80), email: str(b.email, 160), dept: str(b.department, 120), site: str(b.site, 120),
+    start: str(b.startDate, 10), end: str(b.endDate, 10), other: str(b.other, 1000), reason: str(b.reason, 1500), lang: b.lang === "fr" ? "fr" : "en" };
+  if (!v.first || !v.last || !EMAIL.test(v.email)) throw new HttpError(400, "Indiquez votre prénom, votre nom et une adresse e-mail valide.", "Enter your first name, last name and a valid email address.");
+  if (!ISO.test(v.start) || !ISO.test(v.end) || v.end < v.start) throw new HttpError(400, "Dates invalides.", "Invalid dates.");
+  if (v.start < localToday()) throw new HttpError(400, "La date de début est passée.", "The start date is in the past.");
+  const cats = new Map(requestCatalogue().map(c => [c.key, c.name]));
+  const lines = (Array.isArray(b.lines) ? b.lines : []).slice(0, 30).map(l => ({ category: cats.get(catKey(l.category)), qty: Math.min(20, Math.max(0, Math.round(Number(l.qty) || 0))) }))
+    .filter(l => l.category !== undefined && l.qty > 0);
+  if (!lines.length && !v.other) throw new HttpError(400, "Dites-nous ce dont vous avez besoin.", "Tell us what you need.");
+  if (s.terms && !b.acceptTerms) throw new HttpError(400, "Acceptez les conditions de prêt pour envoyer la demande.", "Accept the loan terms to send the request.");
+  rateLimit(req, 20, 3_600_000);
+  const t = nowIso(), token = require("crypto").randomBytes(18).toString("base64url");
+  const reqNo = tx(() => {
+    const no = nextReqNo(t.slice(0, 4));
+    db.prepare(`INSERT INTO requests (req_no, token, first_name, last_name, email, department, site, start_date, end_date, lines, other, reason, lang, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(no, token, v.first, v.last, v.email, v.dept, v.site, v.start, v.end, JSON.stringify(lines), v.other, v.reason, v.lang, t, t);
+    return no;
+  })();
+  res.status(201).json({ reqNo, token });
+}));
+const byToken = token => {
+  const r = /^[\w-]{10,60}$/.test(token || "") ? db.prepare("SELECT * FROM requests WHERE token = ?").get(token) : null;
+  if (!r) throw new HttpError(404, "Demande introuvable.", "Request not found.");
+  return r;
+};
+app.get("/api/public/requests/:token", route((req, res) => { res.json(reqToApi(byToken(req.params.token), false)); }));
+app.post("/api/public/requests/:token/cancel", route((req, res) => {
+  const r = byToken(req.params.token);
+  if (r.status !== "pending") throw new HttpError(409, "Cette demande a déjà été traitée : contactez l'équipe informatique.", "This request has already been handled: please contact the IT team.");
+  db.prepare("UPDATE requests SET status = 'cancelled', updated_at = ?, decided_at = ? WHERE id = ?").run(nowIso(), nowIso(), r.id);
+  res.json(reqToApi(byToken(req.params.token), false));
+}));
+
+app.get("/api/requests", route((req, res) => {
+  res.json(db.prepare("SELECT * FROM requests ORDER BY (status = 'pending') DESC, created_at DESC").all().map(r => reqToApi(r, true)));
+}));
+const reqById = id => { const r = db.prepare("SELECT * FROM requests WHERE id = ?").get(id); if (!r) throw new HttpError(404, "Demande introuvable.", "Request not found."); return r; };
+// Free items that match the request, to fill in the reservation
+app.get("/api/requests/:id/suggest", route((req, res) => {
+  const r = reqById(req.params.id), free = freeEquipment(r.start_date, r.end_date), out = [];
+  for (const l of parseLines(r.lines)) out.push(...free.filter(e => catKey(e.category) === catKey(l.category) && !out.includes(e)).slice(0, l.qty));
+  res.json(out.map(e => ({ equipmentId: e.id, item: e.name, serial: e.serial })));
+}));
+app.post("/api/requests/:id/decline", route((req, res) => {
+  const r = reqById(req.params.id);
+  if (r.status !== "pending") throw new HttpError(409, "Cette demande a déjà été traitée.", "This request has already been handled.");
+  db.prepare("UPDATE requests SET status = 'declined', decision_note = ?, updated_at = ?, decided_at = ? WHERE id = ?").run(str((req.body || {}).note, 600), nowIso(), nowIso(), r.id);
+  res.json(reqToApi(reqById(r.id), true));
+}));
+app.delete("/api/requests/:id", route((req, res) => {
+  reqById(req.params.id); db.prepare("DELETE FROM requests WHERE id = ?").run(req.params.id); res.json({ ok: true });
+}));
+
+const RESTORE_TABLES = ["loans", "loan_items", "loan_events", "loan_signatures", "equipment", "reservations", "reservation_items", "counters", "settings", "meta", "files", "notes", "requests"];
 app.post("/api/restore", express.raw({ type: () => true, limit: "300mb" }), route((req, res) => {
   const buf = req.body;
   if (!Buffer.isBuffer(buf) || buf.length < 100 || buf.subarray(0, 15).toString("latin1") !== "SQLite format 3")
@@ -1017,6 +1169,11 @@ app.get(["/docs", "/docs/", "/docs.html"], (req, res) => {
 });
 app.get(["/app", "/app/", "/app.html"], (req, res) => {
   res.type("html").set("Cache-Control", "no-cache").send(APP_HTML.replace(/__ORIGIN__/g, originOf(req)));
+});
+// the public request page
+const REQUEST_HTML = fs.readFileSync(path.join(__dirname, "public", "request.html"), "utf8");
+app.get(["/request", "/request/", "/request.html"], (req, res) => {
+  res.type("html").set("Cache-Control", "no-cache").send(REQUEST_HTML.replace(/__VERSION__/g, VERSION).replace(/__ORIGIN__/g, originOf(req)));
 });
 // the documents' content, also loaded by the helper to answer questions
 const DOCS_JS = fs.readFileSync(path.join(__dirname, "public", "docs-content.js"), "utf8");

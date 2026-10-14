@@ -12,6 +12,22 @@ Versions are MAJOR.MINOR.PATCH, counted one step at a time with no skipped numbe
 
 To add a release: put a new ## version — Tag block at the top (tag is Patch, Minor or Major), group bullets under ### Added, ### Improved or ### Fixed, and bump version in package.json and APP_VERSION in public/app.js.
 
+## 1.11.0 — Minor
+
+### Added
+- A request page at /request where colleagues ask to borrow equipment, without a Tally login. It is a form in four steps: about you (first name, last name, email), dates, equipment, and a last check before sending
+- The first screen is split in two: on the left, the Tally logo, your organisation's name and "Borrow what you need", over the animated purple gradient; on the right, the form. On phones the left side becomes a header band
+- Quick date buttons (today, tomorrow, rest of this week, all next week), and equipment shown as tiles by category with how many are free on the chosen dates, a plus and minus to pick how many, and a box for anything else
+- The last step asks for the department and what the equipment is for, shows everything with Change links, the slip terms to accept, and an optional message from you (where to collect it, for example)
+- After sending, people get a request number and a link to follow it, where the Tally mascot takes the left side and his face follows the request: waiting, approved with the reservation, picked up, returned, or declined with your reason. They can cancel while it is still waiting, and the page remembers their requests and their details on that browser
+- Requests appear in the Calendar, above the reservations, with a count on the Calendar tab, in the bell and in the helper's greeting. Approve opens the reservation form already filled in, with free matching items picked for you; saving it approves the request. Decline asks for an optional reason
+- A Requests section in Settings: accept requests or close the page, the message shown before sending, and buttons to open the page or copy its link
+- A "Borrowing requests" page in the Documents
+
+### Improved
+- The request page only shows categories and how many items are free. Names, serial numbers and who has what stay private. With a login set (AUTH_USER and AUTH_PASS), the request page stays open while the register still asks for the login
+- Each address can send up to 20 requests an hour, and a hidden field stops spam bots. Behind a reverse proxy on the same machine, the visitor's real address is used
+
 ## 1.10.0 — Minor
 
 ### Added

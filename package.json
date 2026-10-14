@@ -1,6 +1,6 @@
 {
   "name": "tally",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "license": "MIT",
   "description": "Tally: a small, self-hosted register for lending out equipment. Loans, inventory, reservations and printable loan slips, in one Node.js server and one SQLite file.",
   "keywords": ["equipment", "loan", "lending", "inventory", "asset-tracking", "it", "self-hosted", "sqlite", "express"],

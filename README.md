@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.10.0" src="https://img.shields.io/badge/version-1.10.0-6e6be5">
+  <img alt="Version 1.11.0" src="https://img.shields.io/badge/version-1.11.0-6e6be5">
   <img alt="Node 22.13+" src="https://img.shields.io/badge/node-%E2%89%A522.13-339933">
   <img alt="Database: SQLite" src="https://img.shields.io/badge/database-SQLite-003b57">
   <img alt="Languages: English and French" src="https://img.shields.io/badge/languages-EN%20%7C%20FR-ec6e67">
@@ -38,6 +38,7 @@ It is deliberately small. One Node.js process, one SQLite file, no database serv
 - [Running it for real](#running-it-for-real)
 - [A day with Tally](#a-day-with-tally)
 - [Settings, section by section](#settings-section-by-section)
+- [Borrowing requests](#borrowing-requests)
 - [The Tally helper](#the-tally-helper)
 - [Keyboard shortcuts](#keyboard-shortcuts)
 - [Your data](#your-data)
@@ -61,6 +62,8 @@ It is deliberately small. One Node.js process, one SQLite file, no database serv
 **Statistics.** Loans per month, the most borrowed items and categories, the people and departments who borrow the most, filtered by period and site.
 
 **Archive.** Old, returned loans can be moved out of the way automatically after a period you choose. They leave the register and the statistics but stay in the archive, where you can look them up, download them as a text file or delete them for good.
+
+**Borrowing requests.** Colleagues ask for equipment on a request page at `/request`, in four short steps, without needing a login. You approve it in the calendar, where it becomes a reservation, and they follow it with their own link. More [below](#borrowing-requests).
 
 **The Tally helper.** A little cube in the corner of the screen who answers questions, runs quick tasks, keeps a shared notepad with pins and reminders, and warns you about clashes while you record a loan. More on him [below](#the-tally-helper).
 
@@ -200,6 +203,23 @@ The gear icon opens Settings. While you are there, the tabs give way to a **Back
 The footer shows the version, a **What's new** link with the full changelog, a link to the source, a **Documents** button and a Help button with the keyboard shortcuts.
 
 **Documents** opens `/docs`, the built-in documentation: installation, backup and restore, updating, an upgrade guide, reverse proxy and HTTPS, step-by-step guides (Raspberry Pi, Windows, Linux service, company HTTPS, moving servers, recovering after a problem), frequently asked questions and a printable admin cheat sheet. It is searchable and available in English and French.
+
+## Borrowing requests
+
+<p align="center"><img src="docs/screenshots/request.jpg" alt="The request page: the Tally logo and &quot;Borrow what you need&quot; over a purple gradient on the left, the first step of the form on the right" width="900"></p>
+
+Share `/request` (the **Copy the request page link** button is in Calendar → Requests and in Settings → Requests) and colleagues can ask for equipment themselves. The page is a form in four steps:
+
+1. **About you.** First name, last name and email. On a computer, the screen is split in two: the Tally logo, your organisation's name and "Borrow what you need" on the left, over the animated purple gradient, and the form on the right.
+2. **Dates.** When they collect it and when they bring it back, with quick buttons for today, tomorrow, this week and next week.
+3. **Equipment.** One tile per category with how many items are free on those dates, a plus and minus to choose how many, and a box for anything else.
+4. **Last check.** Department, what it is for, a summary with Change links, and your slip terms to accept.
+
+They get a request number and a link that shows where things stand, with the Tally mascot on the left, smiling while it waits, cheering when it is approved and sad if it is declined: waiting, approved with the reservation number, picked up, returned, or declined with your reason. They can cancel it while it is waiting, and the page remembers their details and their requests on that browser.
+
+On your side, requests appear in the calendar above the reservations, with a count on the Calendar tab, in the bell and in the helper's greeting. **Approve…** opens the reservation form already filled in, with free matching items picked for you; saving it approves the request. **Decline** asks for an optional reason.
+
+The page only shows categories and how many items are free. Names, serial numbers and who has what stay private. With `AUTH_USER` and `AUTH_PASS` set, `/request` and its few addresses under `/api/public/` stay open while the rest of Tally still asks for the login. Each address can send up to 20 requests an hour. Turn the page off, or add a message such as where to collect the equipment, in Settings → Requests.
 
 ## The Tally helper
 
@@ -356,6 +376,7 @@ public/
   landing.html     Landing page (/)
   app.html         The register (/app)
   404.html         Not-found page
+  request.html     The request page (/request)
   docs.html        The built-in documentation (/docs)
   docs-content.js  The text of the documentation, also used by the helper to answer questions
   app.js           Application code
@@ -369,7 +390,7 @@ tools/gradient/    Source and build script for the landing gradient
 docs/              Screenshots and the mascot expression sheet used in this README
 ```
 
-The server keeps `app.html`, `landing.html` and `404.html` in memory once started, so restart it after editing those files. To rebuild the landing gradient, run `npm install` and `npm run build` inside `tools/gradient`.
+The server keeps `app.html`, `landing.html`, `404.html`, `docs.html`, `docs-content.js` and `request.html` in memory once started, so restart it after editing those files. To rebuild the landing gradient, run `npm install` and `npm run build` inside `tools/gradient`.
 
 ### API
 
@@ -393,10 +414,19 @@ Everything the interface does goes through a small JSON API. It is not versioned
 | POST | `/api/equipment/:id/status` | Mark an item available or on loan |
 | DELETE | `/api/equipment/:id` | Delete an item (refused while it is on loan or reserved) |
 | GET | `/api/reservations` | All reservations |
-| POST | `/api/reservations` | Create a reservation |
+| POST | `/api/reservations` | Create a reservation; with `requestId`, it also approves that request |
 | PUT | `/api/reservations/:id` | Edit an active reservation |
 | POST | `/api/reservations/:id/cancel` | Cancel a reservation |
 | DELETE | `/api/reservations/:id` | Delete a reservation |
+| GET | `/api/requests` | All borrowing requests, waiting ones first |
+| GET | `/api/requests/:id/suggest` | Free items that match a request |
+| POST | `/api/requests/:id/decline` | Decline a request (`note`) |
+| DELETE | `/api/requests/:id` | Delete a request |
+| GET | `/api/public/request-info` | What the request page needs (open without the login) |
+| GET | `/api/public/availability` | Free items per category for `from` and `to` (open) |
+| POST | `/api/public/requests` | Send a request (open, rate-limited) |
+| GET | `/api/public/requests/:token` | A request's status, by its secret link (open) |
+| POST | `/api/public/requests/:token/cancel` | Cancel a waiting request (open) |
 | POST | `/api/undo/:token` | Bring back something deleted in the last 15 minutes |
 | GET | `/api/archive` | Archived loans (`?count=1` for just the number) |
 | GET | `/api/archive/export` | The archive as a `.txt` file |

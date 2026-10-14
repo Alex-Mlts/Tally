@@ -372,8 +372,11 @@
     const acts = [];
     if (c.late) acts.push({label: t("hpTLate"), run: doLate, say: true, primary: true});
     if (rem) acts.push({label: t("hpNotesOpen"), run: () => showNotes(true), primary: !c.late});
+    const rq = (A.requests || []).filter(r => r.status === "pending").length;
+    if (rq) acts.push({label: t("hpShowReqs"), run: () => { close(false); A.showRequests(); }, primary: !c.late && !rem});
     add("bot", p(hi + " " + t("hpIntro")) + (status ? `<p class="tm-status${c.late ? " bad" : ""}">${esc(status)}</p>` : "") +
-      (rem ? `<p class="tm-status rem">${esc(t(rem === 1 ? "hpRemind1" : "hpRemindN", {n: rem}))}</p>` : ""), acts.length ? acts : null);
+      (rem ? `<p class="tm-status rem">${esc(t(rem === 1 ? "hpRemind1" : "hpRemindN", {n: rem}))}</p>` : "") +
+      (rq ? `<p class="tm-status rem">${esc(t(rq === 1 ? "hpReq1" : "hpReqN", {n: rq}))}</p>` : ""), acts.length ? acts : null);
     menu(true);
     requestAnimationFrame(() => requestAnimationFrame(() => { log.scrollTop = 0; }));
   }

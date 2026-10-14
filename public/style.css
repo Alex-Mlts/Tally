@@ -944,3 +944,15 @@ html[data-helper="off"] .sw-av{display:none}
 .smartwarn li::before{content:"";position:absolute;left:2px;top:.55em;width:7px;height:7px;border-radius:50%;background:var(--warn)}
 .smartwarn li.sw-bad::before{background:var(--bad)}
 .smartwarn li.sw-info::before{background:var(--accent)}
+
+/* borrowing requests */
+.tabcount{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:6px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:11px;font-weight:700;vertical-align:1px}
+.tabcount[hidden]{display:none}
+table.reqtable tr.req-new td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.req-why{font-style:italic}
+.fromreq{display:grid;gap:2px;margin:0 0 14px;padding:10px 14px;border-radius:10px;background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+.fromreq strong{color:var(--accent-text,var(--accent))}
+.fromreq span{font-size:13.5px}
+.cfield{display:grid;gap:6px;margin:4px 0 14px}
+.cfield span{font-size:13px;font-weight:600}
+.cfield textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);font:inherit;resize:vertical}
