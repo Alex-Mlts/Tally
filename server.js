@@ -1000,6 +1000,7 @@ app.get("/vendor/qrcode.js", (req, res) => res.sendFile(require.resolve("qrcode-
 // Landing page at "/" and the app itself at "/app". The link-preview tags need absolute URLs, so fill in this server's address.
 const APP_HTML = fs.readFileSync(path.join(__dirname, "public", "app.html"), "utf8");
 const LANDING_HTML = fs.readFileSync(path.join(__dirname, "public", "landing.html"), "utf8");
+const DOCS_HTML = fs.readFileSync(path.join(__dirname, "public", "docs.html"), "utf8");
 const originOf = req => {
   const configured = getSettings().publicUrl;
   const proto = String(req.get("x-forwarded-proto") || req.protocol).split(",")[0].trim();
@@ -1010,8 +1011,18 @@ app.get(["/", "/index.html"], (req, res) => {
   res.type("html").set("Cache-Control", "no-cache").send(LANDING_HTML
     .replace(/__ORIGIN__/g, originOf(req)).replace(/__VERSION__/g, VERSION).replace(/__REPO__/g, REPO_URL).replace(/__LANG__/g, getSettings().defaultLang === "fr" ? "fr" : "en"));
 });
+app.get(["/docs", "/docs/", "/docs.html"], (req, res) => {
+  res.type("html").set("Cache-Control", "no-cache").send(DOCS_HTML
+    .replace(/__VERSION__/g, VERSION).replace(/__REPO__/g, REPO_URL).replace(/__ORIGIN__/g, originOf(req)));
+});
 app.get(["/app", "/app/", "/app.html"], (req, res) => {
   res.type("html").set("Cache-Control", "no-cache").send(APP_HTML.replace(/__ORIGIN__/g, originOf(req)));
+});
+// the documents' content, also loaded by the helper to answer questions
+const DOCS_JS = fs.readFileSync(path.join(__dirname, "public", "docs-content.js"), "utf8");
+app.get("/docs-content.js", (req, res) => {
+  res.type("js").set("Cache-Control", "no-cache").send(DOCS_JS
+    .replace(/__VERSION__/g, VERSION).replace(/__REPO__/g, REPO_URL).replace(/__ORIGIN__/g, originOf(req)));
 });
 app.use(express.static(path.join(__dirname, "public")));
 

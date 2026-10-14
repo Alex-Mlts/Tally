@@ -197,7 +197,9 @@ The gear icon opens Settings. While you are there, the tabs give way to a **Back
 - **Integrations**: what is coming, see the [roadmap](#roadmap). The eye button hides the section if you would rather not see it.
 - **Data**: CSV export and import, download a backup, restore from a backup. The **i** next to the title explains each one.
 
-The footer shows the version, a **What's new** link with the full changelog, a Help button with the keyboard shortcuts, and a link to the source.
+The footer shows the version, a **What's new** link with the full changelog, a link to the source, a **Documents** button and a Help button with the keyboard shortcuts.
+
+**Documents** opens `/docs`, the built-in documentation: installation, backup and restore, updating, an upgrade guide, reverse proxy and HTTPS, step-by-step guides (Raspberry Pi, Windows, Linux service, company HTTPS, moving servers, recovering after a problem), frequently asked questions and a printable admin cheat sheet. It is searchable and available in English and French.
 
 ## The Tally helper
 
@@ -218,6 +220,7 @@ Click him, or press `H`, to open his panel. He can:
 - tell you what is in the archive,
 - export the register to CSV or download a backup,
 - answer common questions, such as how returns, slips, extensions, signatures, the archive, backups, reservations or the colours work.
+- answer questions about installing and running Tally from the Documents, such as "how do I update Tally?" or "how do I set up HTTPS?". He shows the matching part of the page, and a button opens the Documents right at that section.
 
 ### Notes
 
@@ -353,6 +356,8 @@ public/
   landing.html     Landing page (/)
   app.html         The register (/app)
   404.html         Not-found page
+  docs.html        The built-in documentation (/docs)
+  docs-content.js  The text of the documentation, also used by the helper to answer questions
   app.js           Application code
   helper.js        The Tally helper: the mascot, drawn in SVG, and his answers
   i18n.js          French and English texts

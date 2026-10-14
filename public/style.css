@@ -789,6 +789,19 @@ html[data-helper="off"] .tm{display:none}
 .tm-faq[open] summary::after{content:"−"}
 .tm-q{display:block;width:100%;border:0;border-top:1px solid var(--line);background:transparent;color:var(--fg);padding:8px 12px;font-size:12.5px;text-align:left;cursor:pointer}
 .tm-q:hover{background:var(--accent-soft);color:var(--accent-text,var(--accent))}
+.tm-qh{border-top:1px solid var(--line);padding:9px 12px 4px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tm-qh+.tm-q{border-top:0}
+.tm-dh{display:flex;gap:8px;align-items:flex-start;margin:0 0 6px}
+.tm-dh svg{flex:none;width:16px;height:16px;margin-top:2px;fill:none;stroke:var(--accent-text,var(--accent));stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.tm-dh span{display:grid;line-height:1.3}
+.tm-dh small{color:var(--muted);font-size:11.5px;font-weight:600}
+.tm-doc{font-size:13px}
+.tm-doc>*+*{margin-top:6px}
+.tm-dp{margin:0}
+.tm-dtip,.tm-dwarn{padding:6px 9px;border-radius:8px;background:var(--accent-soft)}
+.tm-dwarn{background:var(--warn-soft)}
+.tm-dlist{margin:0;padding:0 0 0 18px;display:grid;gap:3px}
+.tm-code{margin:0;padding:7px 9px;border-radius:8px;background:var(--surface);border:1px solid var(--line);font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;overflow-x:auto;max-width:100%}
 .tm-ask{flex:none;display:flex;gap:8px;padding:10px 12px 12px;border-top:1px solid var(--line)}
 .tm-ask input{flex:1;min-width:0;height:40px;padding:0 14px;border:1px solid var(--line);border-radius:99px;background:var(--bg);color:var(--fg);font-size:14px}
 .tm-ask input:focus{outline:2px solid var(--accent);outline-offset:0;border-color:transparent}

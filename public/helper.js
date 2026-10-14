@@ -294,7 +294,7 @@
     panel.hidden = false; btn.setAttribute("aria-expanded", "true"); root.classList.add("open"); say("");
     if (notesView){ setState("checklist"); setTimeout(() => nIn.focus({preventScroll: true}), 40); }
     else { if (!log.childElementCount) greet(); else setState("talk"); setTimeout(() => input.focus({preventScroll: true}), 40); }
-    loadNotes();
+    loadNotes(); loadDocs().catch(() => {});
   }
   function close(focusBtn){
     if (!isOpen()) return;
@@ -325,7 +325,11 @@
     }
     log.appendChild(m);
     while (log.childElementCount > 30) log.firstElementChild.remove();
-    requestAnimationFrame(() => { log.scrollTop = log.scrollHeight; });
+    // a long answer is shown from its start, a short one keeps the conversation scrolled to the end
+    requestAnimationFrame(() => {
+      const top = m.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop;
+      log.scrollTop = /^bot\b/.test(cls) && !/typing/.test(cls) && m.offsetHeight > log.clientHeight - 60 ? top - 56 : log.scrollHeight;
+    });
     return m;
   }
   const me = text => add("me", esc(text));
@@ -398,15 +402,16 @@
     {id:"colors", kw:["colou","couleur","red","rouge","amber","orange","green","vert"]},
     {id:"import", kw:["import"]}
   ];
+  const DOC_QS = ["update", "restore", "auto", "https", "login", "data"];
   function menu(silent){
     const m = add("bot tm-menu", `<div class="tm-cl">${esc(t("hpTasks"))}</div><div class="tm-grid"><button type="button" class="tm-tile tm-tile-wide tm-tile-notes" data-notes="1"><svg viewBox="0 0 16 16" aria-hidden="true">${ICONS.notes}</svg><span class="tm-tw"><span>${esc(t("hpNotes"))}</span><small class="tm-tsub">${esc(notesSub())}</small></span><span class="tm-tcount"${openNotes() ? "" : " hidden"}>${openNotes() > 9 ? "9+" : openNotes()}</span></button>${TASKS.map(([k, , ic], i) =>
       `<button type="button" class="tm-tile" data-task="${i}"><svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[ic]}</svg><span>${esc(t(k))}</span></button>`).join("")}</div>
-      <details class="tm-faq"><summary>${esc(t("hpFaq"))}</summary>${FAQ.map(f => `<button type="button" class="tm-q" data-faq="${f.id}">${esc(t("hpQ_" + f.id))}</button>`).join("")}</details>`);
+      <details class="tm-faq"><summary>${esc(t("hpFaq"))}</summary>${FAQ.map(f => `<button type="button" class="tm-q" data-faq="${f.id}">${esc(t("hpQ_" + f.id))}</button>`).join("")}<div class="tm-qh">${esc(t("hpAdmin"))}</div>${DOC_QS.map(k => `<button type="button" class="tm-q" data-doc="${k}">${esc(t("hpD_" + k))}</button>`).join("")}</details>`);
     m.addEventListener("click", e => {
       const b = e.target.closest(".tm-tile, .tm-q"); if (!b) return;
       if (b.dataset.notes) return showNotes(true);
       me(b.textContent.trim());
-      if (b.dataset.task) TASKS[Number(b.dataset.task)][1](); else faq(b.dataset.faq);
+      if (b.dataset.task) TASKS[Number(b.dataset.task)][1](); else if (b.dataset.doc) askDocs(t("hpD_" + b.dataset.doc), true); else faq(b.dataset.faq);
     });
     if (!silent) setState("talk");
   }
@@ -455,7 +460,7 @@
   function doKeys(){ bot("idea", p(t("hpRKeys"))); setTimeout(() => { close(false); A.openHelp(); }, 900); }
   function doSettings(){ bot("settings", p(t("hpRSettings"))); setTimeout(() => { close(false); A.go("settings"); }, 900); }
 
-  function faq(id){
+  function faq(id, doc){
     const acts = {
       backup: [{label: t("hpTBackup"), primary: true, run: doBackup}, {label: t("hpOpenData"), run: () => { close(false); A.goSettings("set-data"); }}],
       archive: [{label: t("hpOpenArchive"), primary: true, run: () => { close(false); A.goSettings("set-archive"); }}],
@@ -464,7 +469,9 @@
       import: [{label: t("hpOpenData"), primary: true, run: () => { close(false); A.goSettings("set-data"); }}],
       return: [sug("hpTLate", doLate)], slip: [sug("hpQ_extend", () => faq("extend"))], extend: [sug("hpTSoon", doSoon)]
     }[id];
-    bot(id === "colors" ? "idea" : id === "backup" || id === "import" ? "settings" : id === "res" ? "scheduling" : "reading", p(t("hpA_" + id)), acts);
+    const all = (acts || []).slice(0, 2);
+    if (doc) all.push({label: t("hpDocMore"), run: () => openDoc(doc)});
+    bot(id === "colors" ? "idea" : id === "backup" || id === "import" ? "settings" : id === "res" ? "scheduling" : "reading", p(t("hpA_" + id)), all);
   }
 
   // ----- free text -----
@@ -497,8 +504,148 @@
   }
   log.addEventListener("click", e => { const b = e.target.closest(".tm-link[data-slip]"); if (b){ close(false); A.focusLoan(b.dataset.slip); } });
 
+  // ---------- answers from the Documents (/docs) ----------
+  // The pages are loaded once from /docs-content.js, cut into sections (headings and FAQ questions)
+  // and searched by keywords. Everything stays in the browser.
+  let docsLoading = null, docsIdx = null;
+  function loadDocs(){
+    if (window.TallyDocs) return Promise.resolve();
+    if (!docsLoading) docsLoading = new Promise((res, rej) => {
+      const sc = document.createElement("script"); sc.src = "/docs-content.js";
+      sc.onload = res; sc.onerror = () => { docsLoading = null; sc.remove(); rej(new Error("docs")); };
+      document.head.appendChild(sc);
+    });
+    return docsLoading;
+  }
+  const DSTOP = new Set(("how do does did i can could would should what whats why where when which who is are was be the a an to my our your in on of for with it its there this that " +
+    "set up way want need get please you me we us tally any some about from into at by or and if then so just also still use using make " +
+    "comment faire fait je j on peut peux puis pouvez est c ce cette ces que qu quoi pourquoi ou quand quel quelle quels quelles les le la l un une des de du d " +
+    "mon ma mes nos notre votre vos pour avec dans sur il elle y a faut t s n ne pas en au aux et si se sa son").split(" "));
+  const SYN = {ssl: "https", tls: "https", certificat: "https", certificate: "https", cert: "https", boot: "servic", autostart: "servic", reboot: "servic",
+    password: "login", motdepass: "login", identifiant: "login", account: "login", compte: "login", auth: "login", nightly: "cron", nuit: "cron", automat: "cron",
+    stor: "data", stocke: "data", night: "cron", upgrad: "updat", miseajour: "updat", jour: "updat", sauvegard: "backup", restaur: "restor", donne: "data", base: "data", database: "data", raspberry: "pi",
+    docker: "docker", proxy: "proxy", nginx: "nginx", caddy: "caddy", port: "port", linux: "linux", window: "window", demarr: "start", lanc: "start"};
+  const stem = w => w.length > 4 ? w.replace(/(ements|ement|ations|ation|ings|ing|ers|er|ez|es|ed|e|s)$/, "") || w : w;
+  const toks = str => groups(str).flat();
+  function groups(str){
+    const out = [];
+    norm(str).replace(/mot de passe/g, "motdepasse").replace(/mise a jour|mettre a jour/g, "miseajour").replace(/back up/g, "backup").replace(/log in/g, "login")
+      .replace(/[^a-z0-9]+/g, " ").split(" ").forEach(w => { if (w.length < 2 || DSTOP.has(w)) return; const st = stem(w); out.push(SYN[st] && SYN[st] !== st ? [st, SYN[st]] : [st]); });
+    return out;
+  }
+  const SEC = "h2, h3, details.faq";
+  function docsIndex(){
+    const lang = A.lang === "fr" ? "fr" : "en";
+    if (docsIdx && docsIdx.lang === lang) return docsIdx;
+    const secs = [];
+    window.TallyDocs[lang].forEach(d => {
+      if (d.id === "welcome") return;
+      const box = document.createElement("div"); box.innerHTML = d.h();
+      let n = -1, cur = {doc: d, idx: null, title: d.t, parts: [], lede: d.lede};
+      secs.push(cur);
+      const walk = node => {
+        for (const el of Array.from(node.children)){
+          if (/^H[23]$/.test(el.tagName)){ cur = {doc: d, idx: ++n, title: el.textContent.trim(), parts: []}; secs.push(cur); }
+          else if (el.matches("details.faq")){ cur = {doc: d, idx: ++n, title: el.querySelector("summary").textContent.trim(), parts: Array.from(el.querySelector(".a").children), faq: true}; secs.push(cur); }
+          else if (el.querySelector(SEC)) walk(el);
+          else cur.parts.push(el);
+        }
+      };
+      walk(box);
+    });
+    const df = new Map();
+    secs.forEach(sc => {
+      sc.tTitle = new Set(toks(sc.title)); sc.tDoc = new Set(toks(sc.doc.t));
+      sc.tBody = new Set(toks((sc.lede || "") + " " + sc.parts.map(e => e.textContent).join(" ")));
+      new Set([...sc.tTitle, ...sc.tBody, ...sc.tDoc]).forEach(w => df.set(w, (df.get(w) || 0) + 1));
+    });
+    docsIdx = {lang, secs, df, N: secs.length};
+    return docsIdx;
+  }
+  // a query word matches a word of the page if it is the same, or one starts with the other (4+ letters)
+  const near = (set, q) => { if (set.has(q)) return true; if (q.length < 4) return false; for (const w of set) if (w.length >= 4 && (w.startsWith(q) || q.startsWith(w))) return true; return false; };
+  function docsSearch(text, strict){
+    if (!window.TallyDocs) return [];
+    const ix = docsIndex(), seen = new Set(), qs = groups(text).filter(g => { const k = g.join("|"); if (seen.has(k)) return false; seen.add(k); return true; });
+    if (!qs.length) return [];
+    const idf1 = q => { let n = 0; for (const [w, c] of ix.df) if (w === q || (q.length >= 4 && w.length >= 4 && (w.startsWith(q) || q.startsWith(w)))) n = Math.max(n, c); return n ? Math.log(1 + ix.N / n) : 0; };
+    const ws = qs.map(g => [g, Math.max(...g.map(idf1))]).filter(([, w]) => w > 0);
+    const total = ws.reduce((a, [, w]) => a + w, 0);
+    if (!total) return [];
+    const res = [];
+    for (const sc of ix.secs){
+      let score = 0, covered = 0, inTitle = 0;
+      for (const [q, w] of ws){
+        const tt = q.some(x => near(sc.tTitle, x)), td = q.some(x => near(sc.tDoc, x)), tb = q.some(x => near(sc.tBody, x));
+        if (tt || td || tb) covered += w;
+        if (tt){ score += w * 3; inTitle++; } else if (tb) score += w;
+        if (td) score += w * 1.2;
+      }
+      if (inTitle) score += 2 * inTitle / Math.max(1, sc.tTitle.size);
+      if (sc.faq) score *= 1.15;
+      if (sc.idx === null && inTitle) score *= 1.3;
+      else if (sc.tTitle.size >= 2 && inTitle >= sc.tTitle.size) score *= 1.35;
+      if (sc.idx === null && !sc.parts.length) score *= .8;
+      const cov = covered / total;
+      if (cov >= .6 && score >= 2 && (!strict || inTitle)) res.push({sc, score: score * (.5 + cov)});
+    }
+    return res.sort((a, b) => b.score - a.score).slice(0, 3).map(r => r.sc);
+  }
+  const clip = (s, n) => { s = s.replace(/\s+/g, " ").trim(); return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, "") + "…" : s; };
+  function docBody(sc){
+    let html = "", budget = 520;
+    const items = sc.idx === null ? [Object.assign(document.createElement("p"), {textContent: sc.lede})].concat(sc.parts) : sc.parts;
+    for (const el of items){
+      if (budget <= 0) break;
+      if (el.matches(".code")){
+        const lines = el.querySelector("code").textContent.split("\n");
+        html += `<pre class="tm-code">${esc(lines.slice(0, 6).join("\n"))}${lines.length > 6 ? "\n…" : ""}</pre>`; budget -= 120; continue;
+      }
+      if (el.matches("ul, ol")){
+        const lis = Array.from(el.children).slice(0, 5);
+        html += `<${el.tagName.toLowerCase()} class="tm-dlist">` + lis.map(li => {
+          const c = li.cloneNode(true); c.querySelectorAll(".code").forEach(x => x.remove());
+          const b = c.querySelector("strong"), bt = b ? b.textContent.trim() : "";
+          if (b) b.remove();
+          const rest = clip(c.textContent, 140); budget -= bt.length + rest.length;
+          return `<li>${bt ? `<b>${esc(bt)}</b> ` : ""}${esc(rest)}</li>`;
+        }).join("") + `</${el.tagName.toLowerCase()}>`;
+        if (el.children.length > 5) html += `<div class="tm-more">…</div>`;
+        continue;
+      }
+      if (el.matches("table")){
+        const rows = Array.from(el.querySelectorAll("tbody tr")).slice(0, 4);
+        html += `<ul class="tm-dlist">` + rows.map(r => `<li>${esc(Array.from(r.children).map(c => clip(c.textContent, 90)).filter(x => x && x !== "☐").join(" · "))}</li>`).join("") + `</ul>`;
+        budget -= 200; continue;
+      }
+      const kind = el.matches(".warn") ? " tm-dwarn" : el.matches(".tip") ? " tm-dtip" : "";
+      const c = el.cloneNode(true), b = kind ? c.querySelector("strong") : null, bt = b ? b.textContent.trim() : "";
+      if (b) b.remove();
+      const txt = clip(c.textContent, Math.max(80, budget)); if (!txt) continue;
+      html += `<p class="tm-dp${kind}">${bt ? `<b>${esc(bt)}</b> ` : ""}${esc(txt)}</p>`; budget -= txt.length + bt.length;
+    }
+    return html;
+  }
+  function docLink(sc){ return "/docs?lang=" + (A.lang === "fr" ? "fr" : "en") + "#" + sc.doc.id + (sc.idx === null ? "" : ":" + sc.idx); }
+  function openDoc(sc){ window.open(docLink(sc), "_blank", "noopener"); }
+  function showDoc(sc, others, extra){
+    const head = `<p class="tm-dh"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h7l2 2v9h-9z"/><path d="M5.5 7h5M5.5 9.5h5M5.5 12h3"/></svg><span><b>${esc(sc.title)}</b>${sc.title !== sc.doc.t ? `<small>${esc(sc.doc.t)}</small>` : ""}</span></p>`;
+    const acts = [{label: t("hpDocOpen"), primary: true, run: () => openDoc(sc)}];
+    if (extra) acts.push(extra);
+    (others || []).slice(0, extra ? 1 : 2).forEach(o => acts.push({label: clip(o.title, 42), run: () => showDoc(o, []), say: true}));
+    bot("reading", head + `<div class="tm-doc">${docBody(sc)}</div>`, acts);
+  }
+  async function askDocs(text, fromMenu){
+    try{ await loadDocs(); }catch(_){ if (fromMenu) bot("sad", p(t("hpOffline"))); return false; }
+    const hits = docsSearch(text);
+    if (!hits.length){ if (fromMenu) bot("thinking", p(t("hpDunno"))); return false; }
+    showDoc(hits[0], hits.slice(1));
+    return true;
+  }
+
+  const DATA_Q = /(overdue|late\b|retard|due soon|due today|how many|combien|who has|qui a|which loans|quels prets|en cours|out right now|borrowed by|emprunte par)/;
   const history = []; let hIdx = -1;
-  function ask(raw){
+  async function ask(raw){
     const text = raw.trim(); if (!text) return;
     history.push(text); hIdx = history.length;
     me(text);
@@ -511,8 +658,18 @@
     const nm = text.match(/^\s*(?:note|notes?|noter|remember|rappel(?:le)?(?:-moi)?|retiens)\s*[:\-–]\s*(.+)$/i) || text.match(/^\s*(?:add a note|ajoute(?:r)? une note|new note|nouvelle note)\s*[:\-–]?\s*(.+)$/i);
     if (nm) return noteFromChat(nm[1].trim());
     if (/^(my notes|notes|show notes|open notes|mes notes|voir les notes|ouvrir les notes)$/.test(s)) return showNotes(true);
-    const faqBest = () => { let best = null, score = 0; for (const f of FAQ){ const n = f.kw.filter(k => s.includes(k)).length; if (n > score){ score = n; best = f; } } return best; };
-    if (question){ const f = faqBest(); if (f) return faq(f.id); }
+    const faqBest = () => { let best = null, score = 0; for (const f of FAQ){ const n = f.kw.filter(k => new RegExp("\\b" + k).test(s)).length; if (n > score){ score = n; best = f; } } return best; };
+    if (question){
+      const f = faqBest();
+      if (f){
+        await loadDocs().catch(() => {});
+        const hits = docsSearch(text, true);
+        // backups are covered in depth by the Documents: answer from there, with the download button
+        if (f.id === "backup" && hits.length) return showDoc(hits[0], hits.slice(1), {label: t("hpTBackup"), run: doBackup});
+        return faq(f.id, hits[0]);
+      }
+      if (!DATA_Q.test(s)){ await loadDocs().catch(() => {}); const hits = docsSearch(text); if (hits.length) return showDoc(hits[0], hits.slice(1)); }
+    }
     const rules = [
       [/(overdue|late|retard)/, doLate],
       [/(due soon|soon|bientot|echeance|this week|cette semaine|tomorrow|demain|due today)/, doSoon],
@@ -529,7 +686,9 @@
     const f = faqBest(); if (f) return faq(f.id);
     const r = search(text);
     if (r && (r.eq.length || r.loans.length)) return showSearch(text, r);
-    bot("thinking", p(t("hpDunno")), [sug("hpTFind", doFindPrompt), {label: t("hpMenu"), run: () => menu()}]);
+    await loadDocs().catch(() => {});
+    const hits = docsSearch(text); if (hits.length) return showDoc(hits[0], hits.slice(1));
+    bot("thinking", p(t("hpDunno")), [sug("hpTFind", doFindPrompt), {label: t("hpDocsOpen"), run: () => window.open("/docs?lang=" + (A.lang === "fr" ? "fr" : "en"), "_blank", "noopener")}, {label: t("hpMenu"), run: () => menu()}]);
   }
   $("tmAsk").addEventListener("submit", e => { e.preventDefault(); const v = input.value; input.value = ""; ask(v); });
   input.addEventListener("keydown", e => {
